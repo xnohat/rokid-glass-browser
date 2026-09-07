@@ -425,6 +425,12 @@ class WebRemoteServer {
     bool finiteUnit(dynamic number) =>
         number is num && number.isFinite && number >= 0 && number <= 1;
     switch (action) {
+      case 'history_list':
+      case 'history_clear':
+        break;
+      case 'history_remove':
+        allow('url');
+        if (value['url'] is! String) throw const FormatException('Invalid URL');
       case 'exit_app':
         allow('confirmed');
         if (value['confirmed'] != true) {
@@ -597,6 +603,10 @@ class WebRemoteServer {
       'message': message,
       'requestId': ?requestId,
     });
+  }
+
+  void publishHistory(List<String> items) {
+    if (_authenticated) _send({'type': 'history', 'items': items.take(200).toList()});
   }
 
   void publishState() {

@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'url_keyboard.dart';
 import 'web_remote_server.dart';
 
 const _kGreen = Color(0xFF00FF00);
@@ -49,6 +50,9 @@ class _BrowserScreenState extends State<BrowserScreen>
   WebRemoteStatus _webRemoteStatus = WebRemoteStatus.stopped;
   String? _webRemoteError;
   bool _showWebRemotePanel = false;
+  bool _showUrlKeyboard = false;
+  final UrlKeyboardController _urlHistory = UrlKeyboardController();
+  final GlobalKey<UrlKeyboardState> _urlKbKey = GlobalKey<UrlKeyboardState>();
   // Exit confirmation armed by a two-finger double-tap (F13) or the Exit button.
   bool _confirmExit = false;
   Timer? _confirmExitTimer;
@@ -139,6 +143,7 @@ class _BrowserScreenState extends State<BrowserScreen>
       },
     );
     _loadVisualMode();
+    _urlHistory.load();
     _initWebView();
     _setupEventStream();
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
@@ -297,6 +302,7 @@ class _BrowserScreenState extends State<BrowserScreen>
             }
           },
           onPageFinished: (url) async {
+            unawaited(_urlHistory.record(url));
             // Patch matchMedia + setForceDark BEFORE the viewport change below,
             // so Google's layout-triggered re-check of prefers-color-scheme
             // already sees our override and doesn't switch to light mode.
@@ -919,6 +925,10 @@ class _BrowserScreenState extends State<BrowserScreen>
       case 'cursor_click':
         final cx = _cursorX;
         final cy = _cursorY;
+        if (_showUrlKeyboard) {
+          _urlKbKey.currentState?.hitTest(Offset(cx, cy));
+          return;
+        }
         if (_showWebRemotePanel) {
           final panelActions = <String, VoidCallback?>{
             'start': _webRemote.running ? null : _startWebRemote,
@@ -950,6 +960,7 @@ class _BrowserScreenState extends State<BrowserScreen>
         // Cursor over the HUD strip: activate the toolbar button under it.
         if (!_theaterMode && !_videoFullscreen && cy < _kHudHeight) {
           final actions = <String, VoidCallback?>{
+            'address': () => setState(() => _showUrlKeyboard = true),
             'back': _canGoBack ? _goBack : null,
             'forward': _canGoForward ? () => _webController.goForward() : null,
             'up': _url.isNotEmpty ? () => _scrollPage(0, -(MediaQuery.sizeOf(context).height / 3).round()) : null,
@@ -1245,6 +1256,16 @@ class _BrowserScreenState extends State<BrowserScreen>
         _methodChannel.invokeMethod('wifiEnable');
       case 'wifi_disable':
         _methodChannel.invokeMethod('wifiDisable');
+      case 'history_list':
+        _webRemote.publishHistory(_urlHistory.history);
+      case 'history_remove':
+        await _urlHistory.remove(cmd['url'] as String);
+        _webRemote.publishHistory(_urlHistory.history);
+      case 'history_clear':
+        for (final u in List<String>.from(_urlHistory.history)) {
+          await _urlHistory.remove(u);
+        }
+        _webRemote.publishHistory(_urlHistory.history);
       case 'exit_app':
         _confirmExitTimer?.cancel();
         await _webRemote.stop();
@@ -1317,9 +1338,9 @@ class _BrowserScreenState extends State<BrowserScreen>
       return false;
     }
     // In mouse mode the panel is driven by the cursor (fall through).
-    if (_url.isEmpty &&
+    if (_url.isEmpty && !_showUrlKeyboard && !_showWebRemotePanel &&
         (k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.select)) {
-      setState(() => _showWebRemotePanel = true);
+      setState(() => _showUrlKeyboard = true);
       return true;
     }
 
@@ -1966,6 +1987,17 @@ class _BrowserScreenState extends State<BrowserScreen>
                   ),
                 ),
               if (_showWebRemotePanel) _buildWebRemoteOwnerPanel(),
+              if (_showUrlKeyboard)
+                UrlKeyboard(
+                  key: _urlKbKey,
+                  initialText: _url,
+                  controller: _urlHistory,
+                  onGo: (u) {
+                    setState(() => _showUrlKeyboard = false);
+                    _handleCommand({'action': 'navigate', 'url': u});
+                  },
+                  onClose: () => setState(() => _showUrlKeyboard = false),
+                ),
               // Cursor is rendered as a native Android View in the DecorView
               // (see updateCursor in MainActivity.kt) so it stays visible above
               // YouTube's SurfaceView fullscreen video layer.
@@ -2085,7 +2117,7 @@ class _HudBar extends StatelessWidget {
   });
 
   static final Map<String, GlobalKey> toolKeys = {
-    for (final n in ['back', 'forward', 'up', 'down', 'stop', 'reload', 'exit']) n: GlobalKey(),
+    for (final n in ['address', 'back', 'forward', 'up', 'down', 'stop', 'reload', 'exit']) n: GlobalKey(),
   };
 
   Widget _tool(String name, IconData icon, VoidCallback? cb, {Color? color}) => GestureDetector(
@@ -2126,6 +2158,7 @@ class _HudBar extends StatelessWidget {
             const Icon(Icons.language, color: _kGreen, size: 10),
           const SizedBox(width: 6),
           Expanded(
+            key: toolKeys['address'],
             child: Text(
               url.isNotEmpty ? url : title,
               maxLines: 1,
