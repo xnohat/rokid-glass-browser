@@ -162,6 +162,11 @@ Rules:
         contents.add({'role': 'model', 'parts': parts});
 
         if (gen != _generation) return 'Cancelled';
+        // Any text the model emits alongside tool calls is its "thinking".
+        for (final p in parts) {
+          final t = (p['text'] ?? '').toString().trim();
+          if (t.isNotEmpty) onStatus('💭 $t');
+        }
         final calls = parts.where((p) => p['functionCall'] != null).toList();
         if (calls.isEmpty) {
           final t = parts

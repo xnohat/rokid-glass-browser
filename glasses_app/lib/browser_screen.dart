@@ -60,11 +60,16 @@ class _BrowserScreenState extends State<BrowserScreen>
   late final VoiceAsr _asr = VoiceAsr(_methodChannel);
   late final BrowserAgent _agent = BrowserAgent(
     runTool: _runAgentTool,
-    onStatus: (t) => _setMicStatus(t, clearAfterMs: 0),
+    onStatus: _agentConsole,
   );
   bool _agentListening = false;
   bool _agentStarting = false;
   int _agentListenStartMs = 0;
+  // Floating console shown bottom-right while the agent runs.
+  final List<String> _agentLog = [];
+  bool _agentPanelOpen = false;
+  final ScrollController _agentScroll = ScrollController();
+  Timer? _agentHideTimer;
   bool _micActive = false;
   String? _micStatus;
   Timer? _micStatusTimer;
@@ -189,6 +194,8 @@ class _BrowserScreenState extends State<BrowserScreen>
     _hwPressTimer?.cancel();
     _micStatusTimer?.cancel();
     _agent.cancel();
+    _agentHideTimer?.cancel();
+    _agentScroll.dispose();
     _glideTimer?.cancel();
     unawaited(_webRemote.stop());
     super.dispose();
@@ -2090,18 +2097,44 @@ class _BrowserScreenState extends State<BrowserScreen>
   }
 
   /// Runs an agent command (from voice or the web remote) with UI feedback.
+  /// Append a line to the floating agent console and auto-scroll to bottom.
+  void _agentConsole(String line) {
+    if (!mounted) return;
+    setState(() {
+      _agentPanelOpen = true;
+      _micStatus = null; // the console replaces the single-line status
+      _agentLog.add(line);
+      if (_agentLog.length > 60) _agentLog.removeRange(0, _agentLog.length - 60);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_agentScroll.hasClients) {
+        _agentScroll.jumpTo(_agentScroll.position.maxScrollExtent);
+      }
+    });
+  }
+
   Future<void> _runAgentCommand(String command) async {
     if (command.trim().isEmpty) return;
-    _setMicStatus('🤖 $command');
+    _agentHideTimer?.cancel();
+    setState(() {
+      _agentPanelOpen = true;
+      _micStatus = null;
+      _agentLog
+        ..clear()
+        ..add('🗣 $command');
+    });
     try {
       final msg = await _agent.run(command);
-      _setMicStatus('✓ $msg', clearAfterMs: 6000);
+      _agentConsole('✓ $msg');
       _webRemote.publishAgent(msg);
     } catch (e) {
       final m = e is StateError ? e.message : e.toString();
-      _setMicStatus('Agent: $m', clearAfterMs: 6000);
+      _agentConsole('⚠︎ $m');
       _webRemote.publishAgent('Error: $m');
     }
+    _agentHideTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted) setState(() => _agentPanelOpen = false);
+    });
   }
 
   void _setMicStatus(String? t, {int clearAfterMs = 0}) {
@@ -2382,6 +2415,73 @@ class _BrowserScreenState extends State<BrowserScreen>
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(_modeToast!, style: const TextStyle(color: _kGreen, fontSize: 14, fontWeight: FontWeight.bold)),
+                      ),
+                    ),
+                  ),
+                ),
+              if (_agentPanelOpen && _agentLog.isNotEmpty)
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: IgnorePointer(
+                    child: Container(
+                      width: 232,
+                      constraints: const BoxConstraints(maxHeight: 150),
+                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xE6000000),
+                        border: Border.all(color: _kGreen),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            Container(
+                                width: 6,
+                                height: 6,
+                                decoration: const BoxDecoration(
+                                    color: _kGreen, shape: BoxShape.circle)),
+                            const SizedBox(width: 5),
+                            const Text('AI AGENT',
+                                style: TextStyle(
+                                    color: _kGreen,
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1)),
+                          ]),
+                          const SizedBox(height: 3),
+                          Flexible(
+                            child: ListView.builder(
+                              controller: _agentScroll,
+                              padding: EdgeInsets.zero,
+                              itemCount: _agentLog.length,
+                              itemBuilder: (_, i) {
+                                final line = _agentLog[i];
+                                final dim = line.startsWith('⚙︎') ||
+                                    line.startsWith('💭');
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 2),
+                                  child: Text(
+                                    line,
+                                    style: TextStyle(
+                                      color: line.startsWith('🗣')
+                                          ? Colors.white
+                                          : line.startsWith('✓')
+                                              ? _kGreen
+                                              : dim
+                                                  ? _kSoftGreen
+                                                  : const Color(0xFFFFB0B0),
+                                      fontSize: 10,
+                                      height: 1.15,
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
