@@ -427,6 +427,7 @@ class WebRemoteServer {
     switch (action) {
       case 'history_list':
       case 'history_clear':
+      case 'debug_probe':
         break;
       case 'history_remove':
         allow('url');
@@ -603,6 +604,10 @@ class WebRemoteServer {
       'message': message,
       'requestId': ?requestId,
     });
+  }
+
+  void publishDebug(String payload) {
+    if (_authenticated) _send({'type': 'debug', 'payload': payload});
   }
 
   void publishHistory(List<String> items) {

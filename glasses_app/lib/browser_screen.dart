@@ -373,7 +373,16 @@ class _BrowserScreenState extends State<BrowserScreen>
             await _applyTheme(_isDark);
             // Re-apply the visual render mode (transparent/wireframe) on the new
             // document — pure CSS, so SPA nodes inherit without re-injection.
-            if (_visualMode != 'normal') await _applyVisualMode();
+            if (_visualMode != 'normal') {
+              await _applyVisualMode();
+              // SPAs (Facebook) keep injecting styled nodes/stylesheets for a
+              // few seconds after "finished"; re-apply so our sheet stays last.
+              for (final ms in [600, 1500, 3000, 6000]) {
+                Future.delayed(Duration(milliseconds: ms), () {
+                  if (mounted && _visualMode != 'normal') _applyVisualMode();
+                });
+              }
+            }
             // Dark mode: only sites that ship their OWN dark theme switch (WebView
             // WEB_THEME_DARKENING_ONLY / prefers-color-scheme). Sites without a dark
             // theme keep their original colors — no simulated/forced recoloring. The
@@ -668,7 +677,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   var old=document.getElementById(ID);
   if(old)old.remove();
   var mode=${_jsStr(mode)};
-  if(mode==='normal')return;
+  if(mode==='normal'){if(window.__rokidVisualMO){window.__rokidVisualMO.disconnect();window.__rokidVisualMO=null;}return;}
   var css='';
   if(mode==='transparent'||mode==='wireframe'){
     // Strip backgrounds + fills so the page reads as floating content. Keep media
@@ -677,15 +686,25 @@ class _BrowserScreenState extends State<BrowserScreen>
     css+=
       '*:not(img):not(video):not(canvas):not(picture):not(iframe):not(svg):not(svg *){'+
         'background:transparent !important;'+          // shorthand: beats FB bg-sN classes
+        'background-color:transparent !important;'+
         'background-image:none !important;'+
         'box-shadow:none !important;'+
+        'backdrop-filter:none !important;-webkit-backdrop-filter:none !important;'+
+        'border-color:rgba(255,255,255,.18) !important;'+
       '}'+
+      // Semi-transparent scrims / dimmers (FB uses rgba overlays and CSS vars).
+      '[style*="background"]{background:transparent !important;background-image:none !important;}'+
+      ':root{--card-background:transparent !important;--surface-background:transparent !important;'+
+        '--nav-bar-background:transparent !important;--web-wash:transparent !important;'+
+        '--secondary-button-background:transparent !important;--wash:transparent !important;}'+
       // Facebook (and many sites) paint solid panels via ::before/::after overlays
       // with a white background — neutralize the FILL color, but KEEP their
       // background-image so pseudo-drawn icons/badges/toggles/arrows survive.
       '*::before,*::after{'+
         'background-color:transparent !important;'+
+        'background-image:none !important;'+
         'box-shadow:none !important;'+
+        'backdrop-filter:none !important;'+
       '}'+
       'html,body{background:#000 !important;}'+  // base so unlit areas are true-black (transparent on AR)
       'body,p,span,a,li,td,th,h1,h2,h3,h4,h5,h6,div,label,strong,em,small,button{'+
@@ -713,7 +732,17 @@ class _BrowserScreenState extends State<BrowserScreen>
   var s=document.createElement('style');
   s.id=ID;
   s.textContent=css;
-  (document.head||document.documentElement).appendChild(s);
+  (document.body||document.head||document.documentElement).appendChild(s);
+  // Keep our sheet LAST so later site stylesheets cannot out-cascade it.
+  if(!window.__rokidVisualMO){
+    window.__rokidVisualMO=new MutationObserver(function(muts){
+      var el=document.getElementById(ID);
+      if(!el)return;
+      var parent=document.body||document.head;
+      if(parent&&parent.lastElementChild!==el){parent.appendChild(el);}
+    });
+    window.__rokidVisualMO.observe(document.documentElement,{childList:true,subtree:true});
+  }
 })();''')
         .catchError((_) {});
   }
@@ -1278,6 +1307,22 @@ class _BrowserScreenState extends State<BrowserScreen>
         _methodChannel.invokeMethod('wifiEnable');
       case 'wifi_disable':
         _methodChannel.invokeMethod('wifiDisable');
+      case 'debug_probe':
+        final r = await _webController.runJavaScriptReturningResult(r'''
+(function(){
+  var out=[];var seen=0;
+  var all=document.querySelectorAll('*');
+  for(var i=0;i<all.length&&out.length<40;i++){
+    var el=all[i];var cs=getComputedStyle(el);
+    var bg=cs.backgroundColor, bi=cs.backgroundImage, bf=cs.backdropFilter||cs.webkitBackdropFilter;
+    var r=el.getBoundingClientRect();
+    if(r.width<20||r.height<20)continue;
+    var opaque=(bg&&bg!=='rgba(0, 0, 0, 0)'&&bg!=='transparent')||(bi&&bi!=='none')||(bf&&bf!=='none');
+    if(opaque){out.push({t:el.tagName,c:(el.className||'').toString().slice(0,60),bg:bg,bi:bi.slice(0,60),bf:bf,w:Math.round(r.width),h:Math.round(r.height),y:Math.round(r.top)});}
+  }
+  return JSON.stringify(out);
+})()''');
+        _webRemote.publishDebug(r.toString());
       case 'history_list':
         _webRemote.publishHistory(_urlHistory.history);
       case 'history_remove':
