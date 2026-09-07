@@ -51,6 +51,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   String? _webRemoteError;
   bool _showWebRemotePanel = false;
   bool _showUrlKeyboard = false;
+  final GlobalKey _castKey = GlobalKey();
   final UrlKeyboardController _urlHistory = UrlKeyboardController();
   final GlobalKey<UrlKeyboardState> _urlKbKey = GlobalKey<UrlKeyboardState>();
   // Exit confirmation armed by a two-finger double-tap (F13) or the Exit button.
@@ -969,7 +970,17 @@ class _BrowserScreenState extends State<BrowserScreen>
           return; // click on dim backdrop: ignore
         }
         // Cursor over the HUD strip: activate the toolbar button under it.
-        if (!_theaterMode && !_videoFullscreen && oy < _kHudHeight + 6) {
+        {
+          final box = _castKey.currentContext?.findRenderObject() as RenderBox?;
+          if (box != null && box.hasSize) {
+            final o = box.localToGlobal(Offset.zero);
+            if ((o & box.size).inflate(6).contains(Offset(ox, oy))) {
+              setState(() => _showWebRemotePanel = true);
+              return;
+            }
+          }
+        }
+        if (!_theaterMode && !_videoFullscreen && oy < _kHudHeight + 2) {
           final actions = <String, VoidCallback?>{
             'address': () => setState(() => _showUrlKeyboard = true),
             'back': _canGoBack ? _goBack : null,
@@ -1981,6 +1992,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                 right: 4,
                 bottom: 4,
                 child: IconButton.filledTonal(
+                  key: _castKey,
                   tooltip: 'Web Remote',
                   onPressed: () => setState(() => _showWebRemotePanel = true),
                   icon: Icon(
@@ -2182,8 +2194,10 @@ class _HudBar extends StatelessWidget {
             const Icon(Icons.language, color: _kGreen, size: 10),
           const SizedBox(width: 6),
           Expanded(
-            key: toolKeys['address'],
-            child: Text(
+            child: Container(
+              key: toolKeys['address'],
+              alignment: Alignment.centerLeft,
+              child: Text(
               url.isNotEmpty ? url : title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -2192,6 +2206,7 @@ class _HudBar extends StatelessWidget {
                 fontSize: 9,
                 letterSpacing: 0.3,
               ),
+            ),
             ),
           ),
           if (url.isNotEmpty && onBookmark != null) ...[
