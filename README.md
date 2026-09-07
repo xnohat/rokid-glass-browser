@@ -21,6 +21,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 - Arrow keys ▲▼◀▶ around the touchpad, Back / Forward / Reload, Enter / Backspace, text input
 - Display modes (normal / transparent / wireframe), dimming, text zoom, HUD toggle
 - **Exit browser on glasses** button
+- **Agent log** (expand under the command box): every run's steps — tool, arguments, duration, result — so prompts and tools can be tuned from real data; Copy JSON to share it
 - **History** section (expand at the bottom): search, open, delete one, or clear all
 - Auto‑reconnect after reload or a short network drop; one controller at a time; revoke/stop from the glasses
 
@@ -58,7 +59,7 @@ While the browser is in the foreground it asks the Rokid system to disable the b
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.12.0.apk
+adb install -r releases/rokid-glass-browser-1.12.1.apk
 ```
 
 ## Use

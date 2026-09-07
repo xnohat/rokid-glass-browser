@@ -17,8 +17,22 @@ class BrowserAgent {
   final void Function(String status) onStatus;
 
   static const _maxSteps = 12;
+  static const _maxToolMs = 20000;
   bool _busy = false;
   bool get busy => _busy;
+
+  /// Trace of the last runs (kept on the glasses, readable from the web remote).
+  static final List<Map<String, dynamic>> trace = [];
+  static const _maxTraceRuns = 20;
+  static void _log(Map<String, dynamic> entry) {
+    trace.add({'t': DateTime.now().toIso8601String(), ...entry});
+    if (trace.length > 400) trace.removeRange(0, trace.length - 400);
+  }
+
+  static const _toolNames = {
+    'navigate', 'back', 'forward', 'reload', 'scroll',
+    'read_page', 'click', 'type', 'press_enter', 'done',
+  };
 
   static const _systemPrompt = '''
 You control a web browser running on Rokid smart glasses (480x640 screen, one page at a time).
@@ -106,6 +120,9 @@ Rules:
       _busy = false;
       throw StateError('No Gemini API key (set it in the web remote)');
     }
+    final runId = DateTime.now().millisecondsSinceEpoch.toString();
+    var lastCall = '';
+    _log({'run': runId, 'command': command, 'model': model});
     final contents = <Map<String, dynamic>>[
       {
         'role': 'user',
@@ -154,15 +171,48 @@ Rules:
           final args = Map<String, dynamic>.from(
               (c['functionCall']['args'] as Map?) ?? const {});
           if (name == 'done') {
-            return (args['message'] ?? 'Done').toString();
+            final msg = (args['message'] ?? 'Done').toString();
+            _log({'run': runId, 'step': step, 'tool': 'done', 'result': msg});
+            return msg;
           }
           onStatus('⚙︎ $name${args.isEmpty ? '' : ' ${_short(args)}'}');
           Map<String, dynamic> out;
-          try {
-            out = await runTool(name, args);
-          } catch (e) {
-            out = {'error': e.toString()};
+          final started = DateTime.now();
+          final signature = '$name${jsonEncode(args)}';
+          // Guard rails live in CODE, not in the prompt: unknown tools, missing
+          // arguments, repeats and hangs are rejected here and reported back to
+          // the model as a normal tool result so it can correct itself.
+          if (!_toolNames.contains(name)) {
+            out = {'error': 'unknown tool $name; use one of ${_toolNames.join(', ')}'};
+          } else if (name == 'click' &&
+              args['index'] == null &&
+              (args['text'] ?? '').toString().trim().isEmpty) {
+            out = {'error': 'click needs index or text; call read_page first'};
+          } else if (name == 'type' && (args['text'] ?? '').toString().isEmpty) {
+            out = {'error': 'type needs text'};
+          } else if (name == 'navigate' && (args['url'] ?? '').toString().trim().isEmpty) {
+            out = {'error': 'navigate needs url'};
+          } else if (signature == lastCall && name != 'read_page') {
+            out = {'error': 'same call repeated with no effect; try another step or call done'};
+          } else {
+            try {
+              out = await runTool(name, args)
+                  .timeout(const Duration(milliseconds: _maxToolMs));
+            } on TimeoutException {
+              out = {'error': 'tool timed out'};
+            } catch (e) {
+              out = {'error': e.toString()};
+            }
           }
+          lastCall = signature;
+          _log({
+            'run': runId,
+            'step': step,
+            'tool': name,
+            'args': args,
+            'ms': DateTime.now().difference(started).inMilliseconds,
+            'result': _clip(out),
+          });
           responses.add({
             'functionResponse': {'name': name, 'response': out}
           });
@@ -174,6 +224,15 @@ Rules:
       client.close(force: true);
       _busy = false;
     }
+  }
+
+  static Map<String, dynamic> _clip(Map<String, dynamic> out) {
+    final m = <String, dynamic>{};
+    out.forEach((k, v) {
+      final s = v.toString();
+      m[k] = s.length > 160 ? '\${s.substring(0, 160)}…' : v;
+    });
+    return m;
   }
 
   static String _short(Map<String, dynamic> args) {

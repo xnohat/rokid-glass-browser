@@ -31,6 +31,10 @@
       <div class="row"><button data-action="backspace">⌫ Xóa</button><button data-action="enter">↵ Enter</button></div>
       <form id="rr-agent" class="row" style="margin:10px 0"><input id="rr-agent-text" class="grow" placeholder="Ra lệnh cho AI agent (vd: mở youtube tìm palantir ontology)"><button class="primary" type="submit">Chạy</button></form>
       <div class="feedback" id="rr-agent-state"></div>
+      <details id="rr-trace-box"><summary>Nhật ký agent (để chỉnh prompt)</summary>
+        <div class="row" style="margin:6px 0"><button id="rr-trace-refresh" type="button">Tải log</button><button id="rr-trace-copy" type="button">Copy JSON</button></div>
+        <pre id="rr-trace" style="max-height:40vh;overflow:auto;font-size:11px;white-space:pre-wrap;word-break:break-all"></pre>
+      </details>
       <h2 style="font-size:18px">Touchpad &amp; điều hướng</h2>
       <div class="navgrid">
         <button data-action="scroll_up" aria-label="Cuộn lên" class="nav up">▲</button>
@@ -86,6 +90,7 @@
     if(value.type==='ready'){ready=true;persist();setTimeout(()=>send('get_asr_key'),300);setConnected(true);visibility();const rect=preview.getBoundingClientRect();ws.send(JSON.stringify({type:'viewport',width:Math.round((rect.width||320)*devicePixelRatio),height:Math.round((rect.height||427)*devicePixelRatio)}));setFeedback('Đã ghép đôi · đang nhận màn hình')}
     else if(value.type==='bye'){ready=false;clearToken();badge.textContent='Kính đã thoát';setFeedback('Trình duyệt trên kính đã đóng')}
     else if(value.type==='frame'){pendingFrame=value}
+    else if(value.type==='agent_trace'){window.__trace=value.trace;byId('rr-trace').textContent=value.trace.map(e=>[e.t?e.t.slice(11,19):'',e.command?('CMD '+e.command):(e.tool?('#'+e.step+' '+e.tool+' '+JSON.stringify(e.args||{})+' → '+JSON.stringify(e.result||'')):JSON.stringify(e))].join(' ')).join('\n')}
     else if(value.type==='agent'){byId('rr-agent-state').textContent=value.message}
     else if(value.type==='asr_model'){const sel=byId('rr-asr-model');if(value.models){sel.innerHTML='';for(const m of value.models){const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o)}}if(![...sel.options].some(o=>o.value===value.model)){const o=document.createElement('option');o.value=value.model;o.textContent=value.model;sel.appendChild(o)}sel.value=value.model;if(value.models)setFeedback('Đã tải '+value.models.length+' model')}
     else if(value.type==='asr_key'){byId('rr-asr-state').textContent=value.hasKey?('Đã có key trên kính (…'+(value.tail||'')+')'):'Chưa có key trên kính'}
@@ -108,6 +113,9 @@
   document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>send(button.dataset.action)));
   byId('rr-mode').addEventListener('change',event=>send('set_visual_mode',{mode:event.target.value}));
   byId('rr-asr-save').addEventListener('click',()=>{const k=byId('rr-asr-key').value.trim();if(!k){setFeedback('Nhập key trước',true);return}send('set_asr_key',{key:k});byId('rr-asr-key').value=''});
+  byId('rr-trace-box').addEventListener('toggle',()=>{if(byId('rr-trace-box').open)send('agent_trace')});
+  byId('rr-trace-refresh').addEventListener('click',()=>send('agent_trace'));
+  byId('rr-trace-copy').addEventListener('click',()=>{navigator.clipboard&&navigator.clipboard.writeText(JSON.stringify(window.__trace||[],null,1));setFeedback('Đã copy log')});
   byId('rr-agent').addEventListener('submit',e=>{e.preventDefault();const t=byId('rr-agent-text').value.trim();if(!t)return;byId('rr-agent-state').textContent='⏳ Agent đang chạy…';send('agent_run',{text:t});byId('rr-agent-text').value=''});
   byId('rr-asr-model').addEventListener('change',e=>send('set_asr_model',{model:e.target.value}));
   byId('rr-asr-fetch').addEventListener('click',()=>{setFeedback('Đang tải model…');send('list_asr_models')});

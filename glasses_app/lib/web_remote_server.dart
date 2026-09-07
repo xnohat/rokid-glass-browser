@@ -453,6 +453,8 @@ class WebRemoteServer {
       case 'history_clear':
       case 'debug_probe':
         break;
+      case 'agent_trace':
+        break;
       case 'agent_run':
         allow('text');
         if (value['text'] is! String || (value['text'] as String).trim().isEmpty || (value['text'] as String).length > 400) throw const FormatException('Invalid command');
@@ -642,6 +644,10 @@ class WebRemoteServer {
 
   void publishDebug(String payload) {
     if (_authenticated) _send({'type': 'debug', 'payload': payload});
+  }
+
+  void publishAgentTrace(List<Map<String, dynamic>> trace) {
+    if (_authenticated) _send({'type': 'agent_trace', 'trace': trace.length > 120 ? trace.sublist(trace.length - 120) : trace});
   }
 
   void publishAgent(String message) {

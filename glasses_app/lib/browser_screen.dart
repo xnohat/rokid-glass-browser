@@ -1388,6 +1388,8 @@ class _BrowserScreenState extends State<BrowserScreen>
       case 'get_asr_key':
         _webRemote.publishAsrKeyState(await VoiceAsr.loadKey());
         _webRemote.publishAsrModel(await VoiceAsr.loadModel(), null);
+      case 'agent_trace':
+        _webRemote.publishAgentTrace(BrowserAgent.trace);
       case 'agent_run':
         unawaited(_runAgentCommand((cmd['text'] as String).trim()));
       case 'set_asr_model':
