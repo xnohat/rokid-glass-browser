@@ -17,6 +17,9 @@ const _kSoftGreen = Color(0xFF88FF88);
 // Fixed height of the top HUD/address strip. Content is laid out below this so
 // the address bar never overlaps the web page.
 const double _kHudHeight = 44;
+// Layout (CSS) viewport width presented to pages, in CSS px. 320 is the
+// glasses' native width; 400 gives phone-class layouts.
+const int _kLayoutWidth = 400;
 // Phone touchpad → glasses cursor gain (1.0 = full pad width == full screen).
 const double _kRemotePadGain = 0.45;
 // Glasses touchpad swipe → cursor step = screen / divisor.
@@ -330,7 +333,12 @@ class _BrowserScreenState extends State<BrowserScreen>
 (function(){
   var m=document.querySelector('meta[name="viewport"]');
   if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}
-  m.content='width=device-width,initial-scale=1.0,maximum-scale=5.0,minimum-scale=0.1';
+  // Glasses CSS viewport is only 320px wide (480px @1.5x). Most responsive
+  // sites are designed for >=360px and cramp/overlap below that (Google top
+  // bar, YouTube). Present a phone-class 400px layout viewport and scale it
+  // to fit: everything is ~20% smaller but laid out as intended.
+  var W=${_kLayoutWidth};var s=(window.screen.width/W).toFixed(3);
+  m.content='width='+W+',initial-scale='+s+',minimum-scale='+s+',maximum-scale=5.0';
   document.querySelectorAll('video').forEach(function(v){v.muted=false;if(v.volume>0.5)v.volume=0.5;});
   // Kill the green tap-highlight / focus outline that appears as a border around
   // focused links & the page frame on this WebView.
@@ -546,7 +554,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   // Scroll exactly ONE target: the nearest scrollable ancestor under the cursor
   // if it can still move in that direction, otherwise the window. (Previously
   // both were scrolled -> double distance.)
-  var cx=${_cursorX.toInt()}||Math.floor(window.innerWidth/2);
+  var cx=${_cursorPageX}||Math.floor(window.innerWidth/2);
   var cy=${_cursorPageY}||Math.floor(window.innerHeight/2);
   var el=document.elementFromPoint(cx,cy), guard=0, done=false;
   while(el&&guard++<20&&!done){
@@ -1103,7 +1111,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   ['mouseover','mousedown','mouseup','click'].forEach(function(t){el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window,clientX:x,clientY:y}));});
   if(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable)el.focus();
   if(el.tagName==='IFRAME'){try{var r=el.getBoundingClientRect();var fx=x-r.left,fy=y-r.top;var fi=el.contentDocument&&el.contentDocument.elementFromPoint(fx,fy);if(fi){['mouseover','mousedown','mouseup','click'].forEach(function(t){fi.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:el.contentWindow,clientX:fx,clientY:fy}));});if(fi.tagName==='INPUT'||fi.tagName==='TEXTAREA'||fi.isContentEditable)fi.focus();}}catch(e){}}
-})(${cx.toStringAsFixed(1)},${cy.toStringAsFixed(1)})''');
+})($_cursorPageX,$_cursorPageY)''');
         }
       case 'cursor_long_press':
         final cx = _cursorX.toInt();
@@ -1113,7 +1121,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   var el=document.elementFromPoint(x,y);
   if(!el)return;
   el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,view:window,clientX:x,clientY:y}));
-})($cx,$cy)''');
+})($_cursorPageX,$_cursorPageY)''');
       case 'clear_session':
         _webController.clearCache();
         _webController.clearLocalStorage();
@@ -1155,7 +1163,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     window.__rokidDragEl.dispatchEvent(new TouchEvent('touchstart',
       {bubbles:true,cancelable:true,touches:[tc],targetTouches:[tc],changedTouches:[tc]}));
   }catch(e){}
-})(${_cursorX.toInt()},${_cursorPageY})''');
+})(${_cursorPageX},${_cursorPageY})''');
       case 'cursor_drag_move':
         final ddx = (cmd['dx'] as num?)?.toDouble() ?? 0;
         final ddy = (cmd['dy'] as num?)?.toDouble() ?? 0;
@@ -1182,7 +1190,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     document.dispatchEvent(new TouchEvent('touchmove',
       {bubbles:true,cancelable:true,touches:[tc],targetTouches:[tc],changedTouches:[tc]}));
   }catch(e){}
-})(${_cursorX.toInt()},${_cursorPageY},${ddx.toStringAsFixed(2)},${ddy.toStringAsFixed(2)})''',
+})(${_cursorPageX},${_cursorPageY},${ddx.toStringAsFixed(2)},${ddy.toStringAsFixed(2)})''',
           );
         }
       case 'cursor_drag_end':
@@ -1202,7 +1210,7 @@ class _BrowserScreenState extends State<BrowserScreen>
       {bubbles:true,cancelable:true,touches:[],targetTouches:[],changedTouches:[tc]}));
   }catch(e){}
   window.__rokidDragEl=null;window.__rokidDragId=null;
-})(${_cursorX.toInt()},${_cursorPageY})''');
+})(${_cursorPageX},${_cursorPageY})''');
       case 'keyboard_type':
         final text = cmd['text'] as String? ?? '';
         if (text.isNotEmpty) {
@@ -1424,7 +1432,10 @@ class _BrowserScreenState extends State<BrowserScreen>
   double _cursorOverlayY() => _cursorY;
   /// Cursor Y in WebView/page coordinates (WebView sits below the HUD).
   double get _pageTop => (!_theaterMode && !_videoFullscreen && _url.isNotEmpty) ? _kHudHeight : 0;
-  int get _cursorPageY => (_cursorY - _pageTop).round();
+  int get _cursorPageY => ((_cursorY - _pageTop) * _pageScaleInv).round();
+  int get _cursorPageX => (_cursorX * _pageScaleInv).round();
+  /// CSS px per logical px: layout width / screen width (e.g. 400/320 = 1.25).
+  double get _pageScaleInv => mounted ? _kLayoutWidth / MediaQuery.sizeOf(context).width : 1.0;
   double _cursorNativeOffsetY = 0;
 
   Future<void> _refreshCursorOffset() async {
