@@ -271,6 +271,11 @@ class MainActivity : FlutterActivity() {
     override fun onStart() {
         super.onStart()
         pixelCopyCapture.start()
+        // Microphone for in-page voice search (YouTube/Google "search by voice").
+        if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 201)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val needed = arrayOf(
                 android.Manifest.permission.BLUETOOTH_CONNECT,
@@ -550,10 +555,12 @@ class MainActivity : FlutterActivity() {
                     val wv = findWebView(window.decorView)
                     if (wv != null) {
                         val t = android.os.SystemClock.uptimeMillis()
-                        val px = lx * density
-                        val py = ly * density
                         val wvLoc = IntArray(2)
                         wv.getLocationInWindow(wvLoc)
+                        // Cursor coordinates are window/screen space; the WebView
+                        // now starts below the HUD, so make them view-local.
+                        val px = lx * density - wvLoc[0]
+                        val py = ly * density - wvLoc[1]
 
                         // fullscreen flag is set by Flutter via JS (document.fullscreenElement
                         // or YouTube's aria-label check) — same logic as the double-tap exit.
@@ -673,7 +680,7 @@ class MainActivity : FlutterActivity() {
 
                     // Only move via translation (cheap, no relayout of siblings).
                     cv.x = lx * density - sizePx / 2f
-                    cv.y = wvOffsetY + ly * density - sizePx / 2f
+                    cv.y = ly * density - sizePx / 2f
                     val wantVis = if (visible) android.view.View.VISIBLE else android.view.View.INVISIBLE
                     if (cv.visibility != wantVis) cv.visibility = wantVis
                     // bringToFront() relayouts the whole ViewGroup and triggers a full repaint

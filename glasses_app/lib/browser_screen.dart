@@ -222,7 +222,10 @@ class _BrowserScreenState extends State<BrowserScreen>
   }
 
   void _initWebView() {
-    _webController = WebViewController()
+    // onPermissionRequest: grant in-page getUserMedia (mic) so voice search works.
+    _webController = WebViewController(
+      onPermissionRequest: (request) => request.grant(),
+    )
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel(
         'RokidInput',
@@ -431,6 +434,7 @@ class _BrowserScreenState extends State<BrowserScreen>
       android.setMediaPlaybackRequiresUserGesture(false);
     }
 
+
     setState(() => _webViewReady = true);
   }
 
@@ -537,7 +541,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   // if it can still move in that direction, otherwise the window. (Previously
   // both were scrolled -> double distance.)
   var cx=${_cursorX.toInt()}||Math.floor(window.innerWidth/2);
-  var cy=${_cursorY.toInt()}||Math.floor(window.innerHeight/2);
+  var cy=${_cursorPageY}||Math.floor(window.innerHeight/2);
   var el=document.elementFromPoint(cx,cy), guard=0, done=false;
   while(el&&guard++<20&&!done){
     var st=getComputedStyle(el), oy=st.overflowY, ox=st.overflowX;
@@ -556,22 +560,15 @@ class _BrowserScreenState extends State<BrowserScreen>
   }
 
   Future<void> _applyHudInset({bool fullscreen = false}) async {
-    // HUD is _kHudHeight logical px in Flutter; CSS px on this viewport match
-    // closely enough. A touch of extra margin avoids clipping the first line.
-    // While a video is fullscreen the address bar is hidden, so reserve 0px — the
-    // page/video must reach the very top edge.
-    final inset = fullscreen ? 0 : 46;
+    // The WebView itself is laid out below the HUD (see build), so pages keep
+    // their own layout untouched — fixed headers land right under the bar.
+    // Only the editable-focus reporter is installed here.
     try {
-      await _webController.runJavaScript('''
+      await _webController.runJavaScript(r'''
 (function(){
-  var H=$inset;
-  var s=document.getElementById('__rokidHudInset');
-  if(!s){s=document.createElement('style');s.id='__rokidHudInset';document.head.appendChild(s);}
-  s.textContent=
-    'html{scroll-padding-top:'+H+'px !important;}'+
-    'body{margin-top:'+H+'px !important;}';
-  // Never override the site's position/height/overflow: fixed search dialogs
-  // and SPA focus overlays rely on these values.
+  var s=document.getElementById('__rokidHudInset');if(s)s.remove();
+  var sp=document.getElementById('__rokidHdrPad');if(sp)sp.remove();
+  if(window.__rokidFixMO){window.__rokidFixMO.disconnect();window.__rokidFixMO=null;}
   if(!window.__rokidInputHooked){
     window.__rokidInputHooked=true;
     function active(root){var e=root.activeElement;return e&&e.shadowRoot?active(e.shadowRoot):e;}
@@ -1100,7 +1097,7 @@ class _BrowserScreenState extends State<BrowserScreen>
         }
       case 'cursor_long_press':
         final cx = _cursorX.toInt();
-        final cy = _cursorY.toInt();
+        final cy = _cursorPageY;
         _webController.runJavaScript('''
 (function(x,y){
   var el=document.elementFromPoint(x,y);
@@ -1148,7 +1145,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     window.__rokidDragEl.dispatchEvent(new TouchEvent('touchstart',
       {bubbles:true,cancelable:true,touches:[tc],targetTouches:[tc],changedTouches:[tc]}));
   }catch(e){}
-})(${_cursorX.toInt()},${_cursorY.toInt()})''');
+})(${_cursorX.toInt()},${_cursorPageY})''');
       case 'cursor_drag_move':
         final ddx = (cmd['dx'] as num?)?.toDouble() ?? 0;
         final ddy = (cmd['dy'] as num?)?.toDouble() ?? 0;
@@ -1175,7 +1172,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     document.dispatchEvent(new TouchEvent('touchmove',
       {bubbles:true,cancelable:true,touches:[tc],targetTouches:[tc],changedTouches:[tc]}));
   }catch(e){}
-})(${_cursorX.toInt()},${_cursorY.toInt()},${ddx.toStringAsFixed(2)},${ddy.toStringAsFixed(2)})''',
+})(${_cursorX.toInt()},${_cursorPageY},${ddx.toStringAsFixed(2)},${ddy.toStringAsFixed(2)})''',
           );
         }
       case 'cursor_drag_end':
@@ -1195,7 +1192,7 @@ class _BrowserScreenState extends State<BrowserScreen>
       {bubbles:true,cancelable:true,touches:[],targetTouches:[],changedTouches:[tc]}));
   }catch(e){}
   window.__rokidDragEl=null;window.__rokidDragId=null;
-})(${_cursorX.toInt()},${_cursorY.toInt()})''');
+})(${_cursorX.toInt()},${_cursorPageY})''');
       case 'keyboard_type':
         final text = cmd['text'] as String? ?? '';
         if (text.isNotEmpty) {
@@ -1397,7 +1394,10 @@ class _BrowserScreenState extends State<BrowserScreen>
   /// The native cursor dot is drawn at y + (WebView top offset). Overlay
   /// widgets (HUD, panels, keyboard) are hit-tested in window space, so add
   /// the same offset to compare like with like.
-  double _cursorOverlayY() => _cursorY + _cursorNativeOffsetY;
+  double _cursorOverlayY() => _cursorY;
+  /// Cursor Y in WebView/page coordinates (WebView sits below the HUD).
+  double get _pageTop => (!_theaterMode && !_videoFullscreen && _url.isNotEmpty) ? _kHudHeight : 0;
+  int get _cursorPageY => (_cursorY - _pageTop).round();
   double _cursorNativeOffsetY = 0;
 
   Future<void> _refreshCursorOffset() async {
@@ -2035,7 +2035,11 @@ class _BrowserScreenState extends State<BrowserScreen>
           // is cut off.
           body: Stack(
             children: [
-              Positioned.fill(
+              Positioned(
+                top: (!_theaterMode && !_videoFullscreen && _url.isNotEmpty) ? _kHudHeight : 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
                 child: (_webViewReady && _url.isNotEmpty)
                     ? _buildWebView()
                     : _WaitingOverlay(
