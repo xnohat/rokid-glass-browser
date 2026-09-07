@@ -16,7 +16,7 @@
 
     <application
         android:usesCleartextTraffic="true"
-        android:label="Rokid Browser"
+        android:label="Rokid AI Agent Browser"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

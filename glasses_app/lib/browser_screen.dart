@@ -18,9 +18,6 @@ const _kSoftGreen = Color(0xFF88FF88);
 // Fixed height of the top HUD/address strip. Content is laid out below this so
 // the address bar never overlaps the web page.
 const double _kHudHeight = 44;
-// Layout (CSS) viewport width presented to pages, in CSS px. 320 is the
-// glasses' native width; 400 gives phone-class layouts.
-const int _kLayoutWidth = 360;
 // Phone touchpad → glasses cursor gain (1.0 = full pad width == full screen).
 const double _kRemotePadGain = 0.45;
 // Glasses touchpad swipe → cursor step = screen / divisor.
@@ -45,7 +42,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   late final WebViewController _webController;
   bool _webViewReady = false;
   String _url = '';
-  String _title = 'ROKID BROWSER';
+  String _title = 'ROKID AI AGENT';
   bool _loading = false;
   bool _connected = false;
   String _btStatus = 'scanning';
@@ -442,7 +439,7 @@ class _BrowserScreenState extends State<BrowserScreen>
             if (mounted) {
               setState(() {
                 _url = url;
-                _title = title.isNotEmpty ? title : 'ROKID BROWSER';
+                _title = title.isNotEmpty ? title : 'ROKID AI AGENT';
                 _loading = false;
                 _canGoBack = canGoBack;
                 _canGoForward = canGoForward;
@@ -1206,7 +1203,7 @@ class _BrowserScreenState extends State<BrowserScreen>
         if (mounted) {
           setState(() {
             _url = '';
-            _title = 'ROKID BROWSER';
+            _title = 'ROKID AI AGENT';
             _canGoBack = false;
             _canGoForward = false;
             _cursorVisible = false;
@@ -2151,10 +2148,18 @@ class _BrowserScreenState extends State<BrowserScreen>
               await _urlHistory.remove(u);
             }
             return {'ok': true};
+          // Destructive / connectivity actions require an explicit confirm flag.
+          // Without it, report back so the model asks the user first.
           case 'clear_session':
+            if (args['confirm'] != true) {
+              return {'need_confirm': true, 'message': 'This deletes cookies and cache (logs you out). Ask the user to confirm, then call again with confirm=true.'};
+            }
             await _handleCommand({'action': 'clear_session'});
             return {'ok': true};
           case 'wifi_on':
+            if (args['confirm'] != true) {
+              return {'need_confirm': true, 'message': 'Turning Wi-Fi on/off changes connectivity. Ask the user to confirm, then call again with confirm=true.'};
+            }
             await _handleCommand({'action': 'wifi_enable'});
             return {'ok': true};
           default:
@@ -2647,7 +2652,7 @@ class _WaitingOverlayState extends State<_WaitingOverlay>
           ),
           const SizedBox(height: 16),
           const Text(
-            'ROKID BROWSER',
+            'ROKID AI AGENT',
             style: TextStyle(
               color: _kGreen,
               fontSize: 14,

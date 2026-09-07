@@ -14,7 +14,7 @@ class RokidBrowserApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Rokid Browser',
+      title: 'Rokid AI Agent Browser',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         scaffoldBackgroundColor: const Color(0xFF000000),
