@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Rokid Web Remote</title>
+  <style>
+    :root{color-scheme:dark;--bg:#050805;--card:#0d140d;--line:#365436;--text:#d8f5d8;--muted:#9cb09c;--green:#9dea9d;--danger:#ff8c8c}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px system-ui,-apple-system,sans-serif}main{max-width:520px;margin:auto;padding:18px 14px 40px}.eyebrow{color:var(--green);font-size:12px;letter-spacing:2px}h1{font-size:27px;margin:7px 0}.sub{color:var(--muted);margin:0 0 14px}.card{background:var(--card);border:1px solid #243824;border-radius:15px;padding:14px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.badge{display:inline-block;flex:0 0 auto;border:1px solid var(--line);border-radius:99px;padding:7px 10px;color:var(--green);font-size:13px}button,input,select{font:inherit;color:inherit;background:#101a10;border:1px solid var(--line);border-radius:9px;min-height:44px;padding:9px}button{cursor:pointer;font-weight:650}button:disabled{opacity:.42;cursor:not-allowed}.primary{background:#183418;border-color:#609260}.danger{color:var(--danger)}form{margin:12px 0}.grow{flex:3}.screen{position:relative;margin:13px auto;background:#000;border:1px solid var(--line);border-radius:12px;overflow:hidden;min-height:250px;max-height:52vh;aspect-ratio:3/4;touch-action:none;display:grid;place-items:center}.screen img{display:block;width:100%;height:100%;object-fit:contain;pointer-events:none}.placeholder{position:absolute;text-align:center;color:var(--muted);padding:20px}.feedback{min-height:20px;color:var(--muted);font-size:13px;margin:8px 0}.feedback.error{color:var(--danger)}.pad{min-height:clamp(240px,42vh,380px);border:1px dashed var(--line);border-radius:12px;touch-action:none;margin:10px 0;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;background:radial-gradient(circle at center,#0f1a0f 0,#0a100a 70%)}.pad::after{content:"1 ngón: di chuột · chạm: click · giữ rồi kéo: drag · 2 ngón kéo: cuộn · khép/mở: zoom";display:block;text-align:center;color:#3f5a3f;font-size:11px;padding-top:8px;pointer-events:none;user-select:none}details{margin-top:13px}summary{cursor:pointer;padding:8px 0}label{display:block;color:var(--muted);font-size:13px;margin:11px 0}label input,label select{width:100%;margin-top:5px}.help{font-size:12px;color:var(--muted);line-height:1.45}.pair{padding:18px 0;text-align:center}.pair input{font-size:22px;text-align:center;letter-spacing:5px;max-width:210px}.hidden{display:none!important}.urlbox{position:relative;display:flex}.urlbox input{width:100%;padding-right:44px}#rr-url-clear{position:absolute;right:4px;top:4px;bottom:4px;min-height:0;width:36px;padding:0;border:0;background:transparent;color:var(--muted);font-size:18px}#rr-url-clear:active{color:var(--text)}.navgrid{display:grid;grid-template-columns:56px 1fr 56px;grid-template-rows:56px auto 56px;grid-template-areas:". up ." "left pad right" ". down .";gap:8px;margin:10px 0}.navgrid .pad{grid-area:pad;margin:0;min-height:clamp(220px,38vh,340px)}.nav{font-size:24px;min-height:56px;padding:0;margin:0}.nav.up{grid-area:up}.nav.down{grid-area:down}.nav.left{grid-area:left;min-height:100%}.nav.right{grid-area:right;min-height:100%}.screen{max-height:36vh;min-height:180px}#rr-preview-box summary{cursor:pointer;color:var(--muted);padding:6px 0}
+  </style>
+</head>
+<body><main>
+  <div class="eyebrow">ROKID / WEB REMOTE</div>
+  <h1>Kính trong tầm tay</h1>
+  <p class="sub">Màn hình trực tiếp và điều khiển trên cùng Wi-Fi</p>
+  <section class="card">
+    <div class="row"><span class="badge" id="rr-badge">Chưa ghép đôi</span><button id="rr-help" type="button">Cách kết nối</button></div>
+    <p id="rr-help-text" class="help hidden">Giữ điện thoại và kính trên cùng một mạng Wi-Fi đáng tin cậy. Nhập mã đang hiện trên kính. Mã không nằm trong URL và không được gửi sang website đang mở trên kính.</p>
+    <div id="rr-pair-panel" class="pair">
+      <form id="rr-pair-form"><input type="hidden" id="rr-code" value=""><p class="help">Kết nối với kính cùng Wi-Fi.</p><button class="primary" type="submit">Kết nối</button></form><p id="rr-pair-error" class="feedback error" role="alert"></p>
+    </div>
+    <div id="rr-controls" class="hidden">
+      <form id="rr-address" class="row"><span class="urlbox grow"><input id="rr-url" aria-label="Địa chỉ hoặc tìm kiếm" placeholder="Địa chỉ hoặc tìm kiếm" maxlength="2048"><button type="button" id="rr-url-clear" aria-label="Xóa địa chỉ">✕</button></span><button class="primary" type="submit">Mở</button></form>
+      <details id="rr-preview-box"><summary>Màn hình kính (thu gọn/mở)</summary>
+      <div class="screen" id="rr-preview"><img id="rr-frame" alt="Màn hình trực tiếp từ kính"><div class="placeholder" id="rr-placeholder">Đang chờ khung hình thật từ kính…<br><small>Chạm để click · vuốt để cuộn</small></div></div>
+      </details>
+
+      <p id="rr-feedback" class="feedback" role="status">Đã ghép đôi</p>
+      <div class="row"><button id="rr-back" data-action="back">← Quay lại</button><button id="rr-forward" data-action="forward">Tiến tới →</button><button data-action="reload">↻ Tải lại</button></div>
+      <form id="rr-typing" class="row"><input class="grow" id="rr-text" placeholder="Nhập chữ vào ô đang chọn" maxlength="512"><button type="submit">Gửi chữ</button></form>
+      <div class="row"><button data-action="backspace">⌫ Xóa</button><button data-action="enter">↵ Enter</button></div>
+      <h2 style="font-size:18px">Touchpad &amp; điều hướng</h2>
+      <div class="navgrid">
+        <button data-action="scroll_up" aria-label="Cuộn lên" class="nav up">▲</button>
+        <button data-action="scroll_left" aria-label="Sang trái" class="nav left">◀</button>
+        <div class="pad" id="rr-pad" aria-label="Touchpad: 1 ngón di chuột, chạm để click, 2 ngón kéo để cuộn"></div>
+        <button data-action="scroll_right" aria-label="Sang phải" class="nav right">▶</button>
+        <button data-action="scroll_down" aria-label="Cuộn xuống" class="nav down">▼</button>
+      </div>
+      <details><summary>Hiển thị &amp; cài đặt</summary>
+        <label>Chế độ hiển thị<select id="rr-mode"><option value="normal">Bình thường</option><option value="transparent">Trong suốt</option><option value="wireframe">Viền khung</option></select></label>
+        <label>Độ tối<input id="rr-dim" type="range" min="0" max="0.8" step="0.05" value="0"></label>
+        <div class="row"><button data-action="zoom_out">A−</button><button data-action="zoom_in">A+</button><button data-action="toggle_hud">Thanh địa chỉ</button><button data-action="toggle_passthrough">Che tối</button></div>
+      </details>
+      <button id="rr-exit" class="danger" type="button" style="width:100%;margin-top:18px">Thoát trình duyệt trên kính</button>
+      <div id="rr-exit-confirm" class="hidden"><p>Thoát app trên kính và ngắt điều khiển?</p><div class="row"><button id="rr-exit-yes" class="danger" type="button">Xác nhận thoát</button><button id="rr-exit-no" type="button">Hủy</button></div></div>
+    </div>
+  </section>
+</main>
+<script>
+(()=>{'use strict';
+  const byId=id=>document.getElementById(id), badge=byId('rr-badge'), feedback=byId('rr-feedback'), frame=byId('rr-frame'), preview=byId('rr-preview');
+  const storageKey=`rokid-remote:${location.origin}`;
+  let saved=null;try{saved=JSON.parse(sessionStorage.getItem(storageKey))}catch(_){}
+  let socket=null, token=saved?.token||null, pendingFrame=null, objectUrl=null, requestId=0, pointer=null, padPointer=null, padMoved=false;
+  const setFeedback=(message,error=false)=>{feedback.textContent=message;feedback.classList.toggle('error',error)};
+  const setConnected=connected=>{byId('rr-pair-panel').classList.toggle('hidden',connected);byId('rr-controls').classList.toggle('hidden',!connected);badge.textContent=connected?'Đã ghép đôi':'Chưa ghép đôi'};
+  const send=(action,fields={})=>{if(!ready||!socket||socket.readyState!==WebSocket.OPEN){setFeedback('Chưa kết nối với kính',true);return}socket.send(JSON.stringify({type:'command',action,requestId:++requestId,...fields}))};
+  let retryTimer=null, deadline=saved?.deadline||0, attempt=0, ready=false, decoding=false, frameCount=0;
+  const persist=()=>{try{if(token)sessionStorage.setItem(storageKey,JSON.stringify({token,deadline}));else sessionStorage.removeItem(storageKey)}catch(_){}};
+  const clearToken=()=>{token=null;deadline=0;persist();clearTimeout(retryTimer);setConnected(false)};
+  const visibility=()=>{if(ready&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:document.hidden||decoding?'pause':'resume'}))};
+  document.addEventListener('visibilitychange',visibility);
+  const retry=()=>{if(!token)return;if(!deadline){deadline=Date.now()+60000;persist()}const remaining=deadline-Date.now();if(remaining<=0){clearToken();return}badge.textContent='Đang kết nối lại…';retryTimer=setTimeout(()=>{if(Date.now()>=deadline)clearToken();else connect()},Math.min(1000*2**Math.min(attempt++,3),remaining))};
+  const connect=()=>{clearTimeout(retryTimer);if(!token)return;const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);socket=ws;ready=false;pendingFrame=null;ws.binaryType='blob';
+    ws.onopen=()=>{if(socket===ws)ws.send(JSON.stringify({type:'auth',token}))};
+    ws.onclose=event=>{if(socket!==ws)return;ready=false;pendingFrame=null;setConnected(false);if(event.reason==='Revoked by owner'||event.reason==='Server stopped'||event.code===1008){clearToken();return}retry()};
+    ws.onerror=()=>{if(socket===ws)setFeedback('Không thể kết nối WebSocket',true)};
+    ws.onmessage=event=>onMessage(event,ws);
+  };
+  const onMessage=async(event,ws)=>{if(socket!==ws)return;if(typeof event.data==='string'){let value;try{value=JSON.parse(event.data)}catch(_){setFeedback('Phản hồi máy chủ không hợp lệ',true);return}
+    if(value.type==='ready'){ready=true;persist();setConnected(true);visibility();const rect=preview.getBoundingClientRect();ws.send(JSON.stringify({type:'viewport',width:Math.round((rect.width||320)*devicePixelRatio),height:Math.round((rect.height||427)*devicePixelRatio)}));setFeedback('Đã ghép đôi · đang nhận màn hình')}
+    else if(value.type==='bye'){ready=false;clearToken();badge.textContent='Kính đã thoát';setFeedback('Trình duyệt trên kính đã đóng')}
+    else if(value.type==='frame'){pendingFrame=value}
+    else if(value.type==='state'){if(value.url)byId('rr-url').value=value.url;if(value.visualMode)byId('rr-mode').value=value.visualMode;byId('rr-back').disabled=!value.canGoBack;byId('rr-forward').disabled=!value.canGoForward}
+    else if(value.type==='command_ok'){setFeedback('Lệnh đã được kính nhận')}
+    else if(value.type==='error'){setFeedback(value.message||value.code,true);if(value.code==='unauthorized'||value.code==='revoked'){clearToken();ws.close()}}return}
+    if(!pendingFrame||decoding){ws.close();return}const meta=pendingFrame;pendingFrame=null;if(event.data.size!==meta.byteLength){ws.close();return}
+    decoding=true;const nextUrl=URL.createObjectURL(event.data);const image=new Image();image.src=nextUrl;
+    try{await image.decode();if(socket!==ws||ws.readyState!==WebSocket.OPEN){URL.revokeObjectURL(nextUrl);return}attempt=0;deadline=0;persist();frame.src=nextUrl;byId('rr-placeholder').classList.add('hidden');if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=nextUrl;preview.dataset.frameCount=String(++frameCount);ws.send(JSON.stringify({type:'ack',frameId:meta.frameId}))}
+    catch(_){URL.revokeObjectURL(nextUrl);if(socket===ws){setFeedback('Không giải mã được JPEG',true);ws.close()}}
+    finally{decoding=false;visibility()}
+  };
+  window.addEventListener('pagehide',()=>{if(token){deadline=Date.now()+60000;persist()}socket?.close()});
+  byId('rr-help').addEventListener('click',()=>byId('rr-help-text').classList.toggle('hidden'));
+  byId('rr-pair-form').addEventListener('submit',async event=>{event.preventDefault();const code=byId('rr-code').value;byId('rr-pair-error').textContent='';try{const response=await fetch('/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code})});const value=await response.json();if(!response.ok)throw new Error(value.error||'Ghép đôi thất bại');token=value.token;deadline=Date.now()+60000;persist();connect()}catch(error){byId('rr-pair-error').textContent=error.message||'Ghép đôi thất bại'}});
+  byId('rr-url-clear').addEventListener('click',()=>{const u=byId('rr-url');u.value='';u.focus()});
+  byId('rr-address').addEventListener('submit',event=>{event.preventDefault();send('navigate',{url:byId('rr-url').value})});
+  byId('rr-typing').addEventListener('submit',event=>{event.preventDefault();const input=byId('rr-text');if(input.value)send('type',{text:input.value});input.value=''});
+  document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>send(button.dataset.action)));
+  byId('rr-mode').addEventListener('change',event=>send('set_visual_mode',{mode:event.target.value}));
+  byId('rr-dim').addEventListener('change',event=>send('set_dim',{value:Number(event.target.value)}));
+  const point=(event,element)=>{const r=element.getBoundingClientRect();let left=r.left,top=r.top,width=r.width,height=r.height;if(element===preview&&frame.naturalWidth&&frame.naturalHeight){const imageRatio=frame.naturalWidth/frame.naturalHeight,boxRatio=r.width/r.height;if(imageRatio>boxRatio){height=r.width/imageRatio;top+=(r.height-height)/2}else{width=r.height*imageRatio;left+=(r.width-width)/2}}return{x:Math.max(0,Math.min(1,(event.clientX-left)/width)),y:Math.max(0,Math.min(1,(event.clientY-top)/height))}};
+  preview.addEventListener('pointerdown',event=>{preview.setPointerCapture(event.pointerId);pointer={...point(event,preview),at:performance.now()}});
+  preview.addEventListener('pointerup',event=>{if(!pointer)return;const end=point(event,preview),dx=end.x-pointer.x,dy=end.y-pointer.y,duration=performance.now()-pointer.at;if(Math.hypot(dx,dy)<.025&&duration<700)send('click',{x:end.x,y:end.y});else send('swipe',{dx,dy});pointer=null});
+  preview.addEventListener('pointercancel',()=>pointer=null);
+  const pad=byId('rr-pad');const padPointers=new Map();let padScroll=null,padHold=null,padDrag=false,padFlush=null;const padAcc={x:0,y:0};
+  pad.addEventListener('pointerdown',event=>{event.preventDefault();pad.setPointerCapture(event.pointerId);padPointers.set(event.pointerId,point(event,pad));if(padPointers.size===1){padPointer=point(event,pad);padMoved=false;padDrag=false;clearTimeout(padHold);padHold=setTimeout(()=>{if(padPointers.size===1&&!padMoved){padDrag=true;send('cursor_drag_start');if(navigator.vibrate)navigator.vibrate(30)}},350)}else{padPointer=null;padMoved=true;const pts=[...padPointers.values()];padScroll={y:pts.reduce((a,p)=>a+p.y,0)/pts.length,x:pts.reduce((a,p)=>a+p.x,0)/pts.length,dist:pts.length>=2?Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y):0,zoomAcc:0,mode:null}}});
+  pad.addEventListener('pointermove',event=>{if(!padPointers.has(event.pointerId))return;const next=point(event,pad);padPointers.set(event.pointerId,next);
+    if(padPointers.size>=2&&padScroll){const pts=[...padPointers.values()],cx=pts.reduce((a,p)=>a+p.x,0)/pts.length,cy=pts.reduce((a,p)=>a+p.y,0)/pts.length,dist=Math.hypot(pts[0].x-pts[1].x,pts[0].y-pts[1].y),dx=cx-padScroll.x,dy=cy-padScroll.y,dd=dist-padScroll.dist;
+      if(!padScroll.mode){if(Math.abs(dd)>.06)padScroll.mode='zoom';else if(Math.hypot(dx,dy)>.04)padScroll.mode='scroll';}
+      if(padScroll.mode==='zoom'){padScroll.zoomAcc+=dd;padScroll.dist=dist;if(Math.abs(padScroll.zoomAcc)>.12){send(padScroll.zoomAcc>0?'zoom_in':'zoom_out');padScroll.zoomAcc=0}padScroll.x=cx;padScroll.y=cy;return}
+      if(padScroll.mode==='scroll'&&Math.hypot(dx,dy)>.02){send('swipe',{dx:-dx,dy:-dy});padScroll.x=cx;padScroll.y=cy;padScroll.dist=dist}return}
+    if(!padPointer)return;const dx=next.x-padPointer.x,dy=next.y-padPointer.y;if(dx===0&&dy===0)return;if(!padDrag&&!padMoved&&Math.hypot(dx,dy)>.01)clearTimeout(padHold);padPointer=next;if(!padDrag&&!padMoved&&Math.hypot(dx,dy)<=.01)return;padMoved=true;padAcc.x+=dx;padAcc.y+=dy;if(!padFlush)padFlush=requestAnimationFrame(()=>{padFlush=null;const m={dx:padAcc.x,dy:padAcc.y};padAcc.x=0;padAcc.y=0;if(m.dx||m.dy)send(padDrag?'cursor_drag_move':'cursor_move',m)})});
+  const padEnd=event=>{const wasSingle=padPointers.size===1;padPointers.delete(event.pointerId);clearTimeout(padHold);if(wasSingle&&padDrag)send('cursor_drag_end');else if(wasSingle&&padPointer&&!padMoved)send('cursor_click');if(padPointers.size===0){padPointer=null;padScroll=null;padDrag=false}};
+  pad.addEventListener('pointerup',padEnd);pad.addEventListener('pointercancel',padEnd);pad.addEventListener('dblclick',e=>e.preventDefault());pad.addEventListener('contextmenu',e=>e.preventDefault());
+  byId('rr-exit').addEventListener('click',()=>byId('rr-exit-confirm').classList.remove('hidden'));
+  byId('rr-exit-no').addEventListener('click',()=>byId('rr-exit-confirm').classList.add('hidden'));
+  byId('rr-exit-yes').addEventListener('click',()=>send('exit_app',{confirmed:true}));
+  setConnected(false);
+  preview.dataset.frameCount='0';
+  if(token){if(!deadline){deadline=Date.now()+60000;persist()}if(Date.now()<deadline)connect();else clearToken()}
+  if(!token)byId('rr-pair-form').requestSubmit();
+})();
+</script></body></html>

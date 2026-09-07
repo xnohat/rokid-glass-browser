@@ -1,0 +1,11 @@
+**/build/
+**/.dart_tool/
+**/.gradle/
+**/.kotlin/
+**/.flutter-plugins-dependencies
+**/local.properties
+**/key.properties
+*.jks
+*.keystore
+*.sync-conflict-*
+.DS_Store
