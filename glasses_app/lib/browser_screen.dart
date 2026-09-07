@@ -362,12 +362,7 @@ class _BrowserScreenState extends State<BrowserScreen>
 (function(){
   var m=document.querySelector('meta[name="viewport"]');
   if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}
-  // Glasses CSS viewport is only 320px wide (480px @1.5x). Most responsive
-  // sites are designed for >=360px and cramp/overlap below that (Google top
-  // bar, YouTube). Present a phone-class 400px layout viewport and scale it
-  // to fit: everything is ~20% smaller but laid out as intended.
-  var W=${_kLayoutWidth};var s=(window.screen.width/W).toFixed(3);
-  m.content='width='+W+',initial-scale='+s+',minimum-scale='+s+',maximum-scale=5.0';
+  m.content='width=device-width,initial-scale=1.0,maximum-scale=5.0,minimum-scale=0.1';
   document.querySelectorAll('video').forEach(function(v){v.muted=false;if(v.volume>0.5)v.volume=0.5;});
   // Kill the green tap-highlight / focus outline that appears as a border around
   // focused links & the page frame on this WebView.
@@ -1516,10 +1511,8 @@ class _BrowserScreenState extends State<BrowserScreen>
   double _cursorOverlayY() => _cursorY;
   /// Cursor Y in WebView/page coordinates (WebView sits below the HUD).
   double get _pageTop => (!_theaterMode && !_videoFullscreen && _url.isNotEmpty) ? _kHudHeight : 0;
-  int get _cursorPageY => ((_cursorY - _pageTop) * _pageScaleInv).round();
-  int get _cursorPageX => (_cursorX * _pageScaleInv).round();
-  /// CSS px per logical px: layout width / screen width (e.g. 400/320 = 1.25).
-  double get _pageScaleInv => mounted ? _kLayoutWidth / MediaQuery.sizeOf(context).width : 1.0;
+  int get _cursorPageY => (_cursorY - _pageTop).round();
+  int get _cursorPageX => _cursorX.round();
   double _cursorNativeOffsetY = 0;
 
   Future<void> _refreshCursorOffset() async {
