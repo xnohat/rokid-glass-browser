@@ -231,7 +231,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
           behavior: HitTestBehavior.opaque,
           onTap: () => _press(k),
           child: Container(
-            height: 34,
+            height: 29,
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: k.action == 'go' ? const Color(0xFF184818) : const Color(0xFF0B140B),
@@ -242,7 +242,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
               k.label,
               style: TextStyle(
                 color: special ? _green : _soft,
-                fontSize: k.label.length > 2 ? 11 : 16,
+                fontSize: k.label.length > 2 ? 10 : 15,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -259,7 +259,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
         color: const Color(0xF2000000),
         child: Column(
           children: [
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             // Address field + close
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -267,7 +267,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
                 children: [
                   Expanded(
                     child: Container(
-                      height: 34,
+                      height: 30,
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       alignment: Alignment.centerLeft,
                       decoration: BoxDecoration(
@@ -289,7 +289,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
                     onTap: widget.onClose,
                     child: Container(
                       width: 40,
-                      height: 34,
+                      height: 30,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(border: Border.all(color: const Color(0xFFFF6666)), borderRadius: BorderRadius.circular(6)),
                       child: const Text('ĐÓNG', style: TextStyle(color: Color(0xFFFF6666), fontSize: 9, fontWeight: FontWeight.bold)),
@@ -301,7 +301,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
             const SizedBox(height: 4),
             // Suggestions (5 rows fixed height so the keyboard never jumps)
             SizedBox(
-              height: 5 * 30,
+              height: 5 * 27,
               child: Column(
                 children: [
                   for (var i = 0; i < 5; i++)
@@ -316,7 +316,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
                                 behavior: HitTestBehavior.opaque,
                                 onTap: () => widget.onGo(suggestions[i]),
                                 child: Container(
-                                  height: 28,
+                                  height: 25,
                                   padding: const EdgeInsets.symmetric(horizontal: 8),
                                   alignment: Alignment.centerLeft,
                                   decoration: BoxDecoration(
@@ -341,23 +341,23 @@ class UrlKeyboardState extends State<UrlKeyboard> {
                                 onTap: () => widget.controller.remove(suggestions[i]).then((_) => _refresh()),
                                 child: Container(
                                   width: 34,
-                                  height: 28,
+                                  height: 25,
                                   alignment: Alignment.center,
                                   decoration: BoxDecoration(border: Border.all(color: const Color(0xFF7A3A3A)), borderRadius: BorderRadius.circular(5)),
                                   child: const Text('✕', style: TextStyle(color: Color(0xFFFF7777), fontSize: 13)),
                                 ),
                               )
                             else
-                              const SizedBox(width: 34, height: 28),
+                              const SizedBox(width: 34, height: 25),
                           ],
                         ),
                       )
                     else
-                      const SizedBox(height: 30),
+                      const SizedBox(height: 27),
                 ],
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 2),
             // Keyboard rows
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 6),

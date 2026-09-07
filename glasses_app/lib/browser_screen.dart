@@ -925,8 +925,19 @@ class _BrowserScreenState extends State<BrowserScreen>
       case 'cursor_click':
         final cx = _cursorX;
         final cy = _cursorY;
+        // Overlays are hit-tested against where the dot is REALLY drawn.
+        double ox = cx, oy = cy;
+        try {
+          final pos = await _methodChannel.invokeMethod<List<dynamic>>('cursorScreenPos');
+          if (pos != null && pos.length == 2) {
+            ox = (pos[0] as num).toDouble();
+            oy = (pos[1] as num).toDouble();
+          }
+        } catch (_) {}
+        // Flutter overlay coordinates: the Scaffold body starts at the window
+        // origin (no system bars on this device), so window == Flutter global.
         if (_showUrlKeyboard) {
-          _urlKbKey.currentState?.hitTest(Offset(cx, cy));
+          _urlKbKey.currentState?.hitTest(Offset(ox, oy));
           return;
         }
         if (_showWebRemotePanel) {
@@ -950,7 +961,7 @@ class _BrowserScreenState extends State<BrowserScreen>
             final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
             if (box == null || !box.hasSize) continue;
             final origin = box.localToGlobal(Offset.zero);
-            if ((origin & box.size).inflate(4).contains(Offset(cx, cy))) {
+            if ((origin & box.size).inflate(10).contains(Offset(ox, oy))) {
               panelActions[entry.key]?.call();
               return;
             }
@@ -958,7 +969,7 @@ class _BrowserScreenState extends State<BrowserScreen>
           return; // click on dim backdrop: ignore
         }
         // Cursor over the HUD strip: activate the toolbar button under it.
-        if (!_theaterMode && !_videoFullscreen && cy < _kHudHeight) {
+        if (!_theaterMode && !_videoFullscreen && oy < _kHudHeight + 6) {
           final actions = <String, VoidCallback?>{
             'address': () => setState(() => _showUrlKeyboard = true),
             'back': _canGoBack ? _goBack : null,
@@ -979,7 +990,7 @@ class _BrowserScreenState extends State<BrowserScreen>
             final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
             if (box == null || !box.hasSize) continue;
             final origin = box.localToGlobal(Offset.zero);
-            if ((origin & box.size).inflate(3).contains(Offset(cx, cy))) {
+            if ((origin & box.size).inflate(6).contains(Offset(ox, oy))) {
               actions[entry.key]?.call();
               return;
             }
@@ -1292,6 +1303,19 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   // Push cursor state to the native Android layer so it remains visible above
   // SurfaceView fullscreen video, which renders above Flutter's widget tree.
+  /// The native cursor dot is drawn at y + (WebView top offset). Overlay
+  /// widgets (HUD, panels, keyboard) are hit-tested in window space, so add
+  /// the same offset to compare like with like.
+  double _cursorOverlayY() => _cursorY + _cursorNativeOffsetY;
+  double _cursorNativeOffsetY = 0;
+
+  Future<void> _refreshCursorOffset() async {
+    try {
+      final v = await _methodChannel.invokeMethod<double>('cursorOffsetY');
+      if (v != null && mounted) _cursorNativeOffsetY = v;
+    } catch (_) {}
+  }
+
   void _syncCursor() {
     _methodChannel
         .invokeMethod('updateCursor', {

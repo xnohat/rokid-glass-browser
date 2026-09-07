@@ -22,6 +22,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 - Auto‑reconnect after reload or a short network drop; one controller at a time; revoke/stop from the glasses
 
 **On the glasses**
+- **Wi‑Fi auto-on** when the app opens (also persists Rokid's own Wi‑Fi preference so it survives reboot — technique from [rokid-wifi-on](https://github.com/ksuzukigh/rokid-wifi-on))
 - **URL keyboard** (click the address bar): QWERTY + digits + `: / ? . # % @`, `http://` `https://` `www.` `.com`, ✕ clear, GO — big keys for the 2‑axis cursor. Autocomplete from your history and popular services (root domains first, deep paths after), ▲▼ to pick, ✕ to forget an entry
 - Toolbar next to the address bar: ◀ ▶ ▲ ▼ ■ ↻ ⏻ — click them with the cursor
 - Two modes, toggled with the temple button: **MOUSE** (swipe moves the cursor, tap clicks) and **SCROLL** (swipe scrolls / jumps between elements, tap activates)
@@ -46,7 +47,7 @@ While the browser is in the foreground it asks the Rokid system to disable the b
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.8.0.apk
+adb install -r releases/rokid-glass-browser-1.8.3.apk
 ```
 
 ## Use

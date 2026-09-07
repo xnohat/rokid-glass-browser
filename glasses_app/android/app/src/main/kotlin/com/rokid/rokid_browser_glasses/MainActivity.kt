@@ -77,6 +77,24 @@ class MainActivity : FlutterActivity() {
         } catch (_: Exception) {}
     }
 
+    /** RV101 keeps its own Wi-Fi preference; without it SpriteWifiService turns
+     *  Wi-Fi back off after a reboot (learned from ksuzukigh/rokid-wifi-on). */
+    private fun ensureWifiOn() {
+        try {
+            val intent = Intent("com.rokid.os.master.assist.server.cmd")
+                .setPackage("com.rokid.os.sprite.assistserver")
+            intent.putExtra("cmd_type", "setting_change")
+            intent.putExtra("value", "[{\"key\":\"settings_wifi_enable\",\"value\":\"true\"}]")
+            sendBroadcast(intent)
+        } catch (_: Exception) {}
+        try {
+            val wm = wifiManager()
+            @Suppress("DEPRECATION")
+            if (!wm.isWifiEnabled) wm.setWifiEnabled(true)
+        } catch (_: Exception) {}
+        mainHandler.postDelayed({ sendWifiState() }, 1500)
+    }
+
     private fun claimHardwareButton() {
         if (!buttonReceiverRegistered) {
             val f = IntentFilter().apply {
@@ -267,6 +285,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        ensureWifiOn()
         claimHardwareButton()
     }
 
@@ -361,9 +380,7 @@ class MainActivity : FlutterActivity() {
                     finishAffinity()
                 }
                 "wifiEnable" -> {
-                    @Suppress("DEPRECATION")
-                    wifiManager().setWifiEnabled(true)
-                    mainHandler.postDelayed({ sendWifiState() }, 1500)
+                    ensureWifiOn()
                     result.success(true)
                 }
                 "wifiDisable" -> {
@@ -448,6 +465,22 @@ class MainActivity : FlutterActivity() {
                             result.error("capture_failed", message, null)
                         }
                     )
+                }
+                "cursorScreenPos" -> {
+                    // Actual on-screen centre of the cursor dot in window logical px.
+                    val cv = cursorView
+                    val d = resources.displayMetrics.density
+                    if (cv == null) { result.success(null) } else {
+                        val loc = IntArray(2); cv.getLocationInWindow(loc)
+                        result.success(listOf(((loc[0] + cv.width / 2f) / d).toDouble(), ((loc[1] + cv.height / 2f) / d).toDouble()))
+                    }
+                }
+                "cursorOffsetY" -> {
+                    // Logical-px Y offset the cursor overlay adds (WebView top in window).
+                    val wv = findWebView(window.decorView)
+                    val d = resources.displayMetrics.density
+                    val off = if (wv != null) { val l = IntArray(2); wv.getLocationInWindow(l); l[1] / d } else 0f
+                    result.success(off.toDouble())
                 }
                 "resetZoom" -> {
                     // A newly loaded page starts at 100%; keep our tracker in sync.
