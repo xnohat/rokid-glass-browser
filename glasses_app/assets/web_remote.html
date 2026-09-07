@@ -40,9 +40,11 @@
       <details><summary>Hiển thị &amp; cài đặt</summary>
         <label>Chế độ hiển thị<select id="rr-mode"><option value="normal">Bình thường</option><option value="transparent">Trong suốt</option><option value="wireframe">Viền khung</option></select></label>
         <label>Độ tối<input id="rr-dim" type="range" min="0" max="0.8" step="0.05" value="0"></label>
-        <label>Gemini API key (nhận dạng giọng nói, model gemini-2.5-flash — lưu trên kính)<input id="rr-asr-key" type="password" placeholder="AIza…" autocomplete="off"></label>
+        <label>Gemini API key (nhận dạng giọng nói — lưu trên kính)<input id="rr-asr-key" type="password" placeholder="AIza…" autocomplete="off"></label>
         <div class="row"><button id="rr-asr-save" type="button" class="primary">Lưu / cập nhật</button><button id="rr-asr-clear" type="button" class="danger">Xóa key</button></div>
         <div class="feedback" id="rr-asr-state">Chưa có key trên kính</div>
+        <label>Model nhận dạng<select id="rr-asr-model"><option value="gemini-3.5-transcribe">gemini-3.5-transcribe</option></select></label>
+        <div class="row"><button id="rr-asr-fetch" type="button">Tải danh sách model từ Google</button></div>
         <div class="row"><button data-action="zoom_out">A−</button><button data-action="zoom_in">A+</button><button data-action="toggle_hud">Thanh địa chỉ</button><button data-action="toggle_passthrough">Che tối</button></div>
       </details>
       <details id="rr-history-box" style="margin-top:14px"><summary>Lịch sử duyệt web</summary>
@@ -82,6 +84,7 @@
     if(value.type==='ready'){ready=true;persist();setTimeout(()=>send('get_asr_key'),300);setConnected(true);visibility();const rect=preview.getBoundingClientRect();ws.send(JSON.stringify({type:'viewport',width:Math.round((rect.width||320)*devicePixelRatio),height:Math.round((rect.height||427)*devicePixelRatio)}));setFeedback('Đã ghép đôi · đang nhận màn hình')}
     else if(value.type==='bye'){ready=false;clearToken();badge.textContent='Kính đã thoát';setFeedback('Trình duyệt trên kính đã đóng')}
     else if(value.type==='frame'){pendingFrame=value}
+    else if(value.type==='asr_model'){const sel=byId('rr-asr-model');if(value.models){sel.innerHTML='';for(const m of value.models){const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o)}}if(![...sel.options].some(o=>o.value===value.model)){const o=document.createElement('option');o.value=value.model;o.textContent=value.model;sel.appendChild(o)}sel.value=value.model;if(value.models)setFeedback('Đã tải '+value.models.length+' model')}
     else if(value.type==='asr_key'){byId('rr-asr-state').textContent=value.hasKey?('Đã có key trên kính (…'+(value.tail||'')+')'):'Chưa có key trên kính'}
     else if(value.type==='history'){historyItems=value.items||[];renderHistory()}
     else if(value.type==='state'){if(value.url)byId('rr-url').value=value.url;if(value.visualMode)byId('rr-mode').value=value.visualMode;byId('rr-back').disabled=!value.canGoBack;byId('rr-forward').disabled=!value.canGoForward}
@@ -102,6 +105,8 @@
   document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>send(button.dataset.action)));
   byId('rr-mode').addEventListener('change',event=>send('set_visual_mode',{mode:event.target.value}));
   byId('rr-asr-save').addEventListener('click',()=>{const k=byId('rr-asr-key').value.trim();if(!k){setFeedback('Nhập key trước',true);return}send('set_asr_key',{key:k});byId('rr-asr-key').value=''});
+  byId('rr-asr-model').addEventListener('change',e=>send('set_asr_model',{model:e.target.value}));
+  byId('rr-asr-fetch').addEventListener('click',()=>{setFeedback('Đang tải model…');send('list_asr_models')});
   byId('rr-asr-clear').addEventListener('click',()=>{if(confirm('Xóa Gemini key khỏi kính?'))send('clear_asr_key')});
   byId('rr-dim').addEventListener('change',event=>send('set_dim',{value:Number(event.target.value)}));
   const point=(event,element)=>{const r=element.getBoundingClientRect();let left=r.left,top=r.top,width=r.width,height=r.height;if(element===preview&&frame.naturalWidth&&frame.naturalHeight){const imageRatio=frame.naturalWidth/frame.naturalHeight,boxRatio=r.width/r.height;if(imageRatio>boxRatio){height=r.width/imageRatio;top+=(r.height-height)/2}else{width=r.height*imageRatio;left+=(r.width-width)/2}}return{x:Math.max(0,Math.min(1,(event.clientX-left)/width)),y:Math.max(0,Math.min(1,(event.clientY-top)/height))}};

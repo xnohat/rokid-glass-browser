@@ -158,12 +158,12 @@ class UrlKeyboardState extends State<UrlKeyboard> {
   ];
 
   static const _textRows = <List<_K>>[
-    [_K('✕ Xóa ô', action: 'clearfield', w: 2.2), _K('🎤', action: 'mic', w: 1.3), _K('␣', insert: ' ', w: 1.8), _K('⌫', action: 'backspace', w: 1.5), _K('ENTER', action: 'enter', w: 1.9)],
+    [_K('✕ Clear', action: 'clearfield', w: 2.2), _K('🎤', action: 'mic', w: 1.3), _K('␣', insert: ' ', w: 1.8), _K('⌫', action: 'backspace', w: 1.5), _K('ENTER', action: 'enter', w: 1.9)],
     [_K('1', insert: '1'), _K('2', insert: '2'), _K('3', insert: '3'), _K('4', insert: '4'), _K('5', insert: '5'), _K('6', insert: '6'), _K('7', insert: '7'), _K('8', insert: '8'), _K('9', insert: '9'), _K('0', insert: '0')],
     [_K('q', insert: 'q'), _K('w', insert: 'w'), _K('e', insert: 'e'), _K('r', insert: 'r'), _K('t', insert: 't'), _K('y', insert: 'y'), _K('u', insert: 'u'), _K('i', insert: 'i'), _K('o', insert: 'o'), _K('p', insert: 'p')],
     [_K('a', insert: 'a'), _K('s', insert: 's'), _K('d', insert: 'd'), _K('f', insert: 'f'), _K('g', insert: 'g'), _K('h', insert: 'h'), _K('j', insert: 'j'), _K('k', insert: 'k'), _K('l', insert: 'l'), _K('⇧', action: 'shift')],
     [_K('z', insert: 'z'), _K('x', insert: 'x'), _K('c', insert: 'c'), _K('v', insert: 'v'), _K('b', insert: 'b'), _K('n', insert: 'n'), _K('m', insert: 'm'), _K(',', insert: ','), _K('.', insert: '.'), _K('?', insert: '?')],
-    [_K('@', insert: '@'), _K('#', insert: '#'), _K('!', insert: '!'), _K('-', insert: '-'), _K('_', insert: '_'), _K(':', insert: ':'), _K('/', insert: '/'), _K("'", insert: "'"), _K('"', insert: '"'), _K('ĐÓNG', action: 'close', w: 1.4)],
+    [_K('@', insert: '@'), _K('#', insert: '#'), _K('!', insert: '!'), _K('-', insert: '-'), _K('_', insert: '_'), _K(':', insert: ':'), _K('/', insert: '/'), _K("'", insert: "'"), _K('"', insert: '"'), _K('CLOSE', action: 'close', w: 1.4)],
   ];
   bool shift = false;
   List<List<_K>> get rows => widget.mode == 'text' ? _textRows : _rows;
@@ -353,7 +353,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Row(children: [
-                  Expanded(child: Text(widget.micStatus ?? (text.isEmpty ? 'Đang gõ vào ô trên trang…' : '$text▏'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: widget.micStatus != null ? const Color(0xFFFF7777) : text.isEmpty ? const Color(0xFF4A7A4A) : Colors.white, fontSize: 12, fontWeight: widget.micStatus != null ? FontWeight.bold : FontWeight.normal))),
+                  Expanded(child: Text(widget.micStatus ?? (text.isEmpty ? 'Typing into the page field…' : '$text▏'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: widget.micStatus != null ? const Color(0xFFFF7777) : text.isEmpty ? const Color(0xFF4A7A4A) : Colors.white, fontSize: 12, fontWeight: widget.micStatus != null ? FontWeight.bold : FontWeight.normal))),
                   if (shift) const Text('SHIFT', style: TextStyle(color: _green, fontSize: 10, fontWeight: FontWeight.bold)),
                 ]),
               ),
@@ -384,7 +384,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        widget.micStatus ?? (text.isEmpty ? 'Nhập địa chỉ hoặc tìm kiếm' : '$text▏'),
+                        widget.micStatus ?? (text.isEmpty ? 'Enter address or search' : '$text▏'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: widget.micStatus != null ? const Color(0xFFFF7777) : text.isEmpty ? const Color(0xFF4A7A4A) : Colors.white, fontSize: 13),
@@ -401,7 +401,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
                       height: 30,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(border: Border.all(color: const Color(0xFFFF6666)), borderRadius: BorderRadius.circular(6)),
-                      child: const Text('ĐÓNG', style: TextStyle(color: Color(0xFFFF6666), fontSize: 9, fontWeight: FontWeight.bold)),
+                      child: const Text('CLOSE', style: TextStyle(color: Color(0xFFFF6666), fontSize: 9, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],

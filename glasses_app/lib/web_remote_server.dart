@@ -448,10 +448,14 @@ class WebRemoteServer {
     switch (action) {
       case 'get_asr_key':
       case 'clear_asr_key':
+      case 'list_asr_models':
       case 'history_list':
       case 'history_clear':
       case 'debug_probe':
         break;
+      case 'set_asr_model':
+        allow('model');
+        if (value['model'] is! String || (value['model'] as String).length > 80) throw const FormatException('Invalid model');
       case 'set_asr_key':
         allow('key');
         if (value['key'] is! String || (value['key'] as String).length > 200) throw const FormatException('Invalid key');
@@ -635,6 +639,10 @@ class WebRemoteServer {
 
   void publishDebug(String payload) {
     if (_authenticated) _send({'type': 'debug', 'payload': payload});
+  }
+
+  void publishAsrModel(String model, List<String>? models) {
+    if (_authenticated) _send({'type': 'asr_model', 'model': model, if (models != null) 'models': models});
   }
 
   void publishAsrKeyState(String key) {

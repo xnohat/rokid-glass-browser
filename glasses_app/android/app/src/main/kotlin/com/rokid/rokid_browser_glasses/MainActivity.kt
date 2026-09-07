@@ -527,6 +527,10 @@ class MainActivity : FlutterActivity() {
                             rec.release()
                         }
                         val pcm = out.toByteArray()
+                        var peak = 0
+                        var i = 0
+                        while (i + 1 < pcm.size) { val v = ((pcm[i + 1].toInt() shl 8) or (pcm[i].toInt() and 0xff)).toShort().toInt(); if (Math.abs(v) > peak) peak = Math.abs(v); i += 2 }
+                        Log.i("RokidASR", "recorded bytes=" + pcm.size + " peak=" + peak + " source=" + (rec?.audioSource ?: -1))
                         java.io.FileOutputStream(f).use { fo ->
                             val h = java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN)
                             h.put("RIFF".toByteArray()).putInt(36 + pcm.size).put("WAVE".toByteArray()).put("fmt ".toByteArray())

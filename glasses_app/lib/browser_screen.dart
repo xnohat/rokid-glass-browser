@@ -1373,6 +1373,15 @@ class _BrowserScreenState extends State<BrowserScreen>
         _webRemote.publishAsrKeyState('');
       case 'get_asr_key':
         _webRemote.publishAsrKeyState(await VoiceAsr.loadKey());
+        _webRemote.publishAsrModel(await VoiceAsr.loadModel(), null);
+      case 'set_asr_model':
+        await VoiceAsr.saveModel((cmd['model'] as String?) ?? '');
+        _webRemote.publishAsrModel(await VoiceAsr.loadModel(), null);
+      case 'list_asr_models':
+        final key = await VoiceAsr.loadKey();
+        if (key.isEmpty) throw StateError('No Gemini API key saved');
+        final models = await VoiceAsr.listModels(key);
+        _webRemote.publishAsrModel(await VoiceAsr.loadModel(), models);
       case 'history_list':
         _webRemote.publishHistory(_urlHistory.history);
       case 'history_remove':
@@ -1851,8 +1860,8 @@ class _BrowserScreenState extends State<BrowserScreen>
   }
 
   String _modeLabel() => _swipeScrollsPage
-      ? 'CUỘN TRANG'
-      : (_mouseAxisVertical ? 'CHUỘT ↕ DỌC' : 'CHUỘT ↔ NGANG');
+      ? 'SCROLL PAGE'
+      : (_mouseAxisVertical ? 'MOUSE ↕ VERTICAL' : 'MOUSE ↔ HORIZONTAL');
 
   /// Push-to-talk shared by both keyboards: first press starts recording,
   /// second press stops and transcribes. Returns text on the second press.
@@ -1877,21 +1886,21 @@ class _BrowserScreenState extends State<BrowserScreen>
         await _asr.start();
         _methodChannel.invokeMethod('beep', {'kind': 'start'}).catchError((_) {});
         setState(() => _micActive = true);
-        status('🎤 ĐANG NGHE… nói rồi bấm ⏹ để dừng');
+        status('🎤 LISTENING… speak, then tap ⏹ to stop');
       } catch (e) {
-        status('Không mở được micro', clearAfterMs: 2500);
+        status('Could not open microphone', clearAfterMs: 2500);
       }
       return null;
     }
     setState(() => _micActive = false);
     _methodChannel.invokeMethod('beep', {'kind': 'stop'}).catchError((_) {});
-    status('⏳ Đang nhận dạng (Gemini)…');
+    status('⏳ Recognising (Gemini)…');
     try {
       final t = await _asr.stopAndTranscribe();
-      status(t.isEmpty ? 'Không nghe rõ, thử lại' : null, clearAfterMs: 2500);
+      status(t.isEmpty ? 'Did not catch that, try again' : null, clearAfterMs: 2500);
       return t;
     } catch (e) {
-      status(e is StateError ? e.message : 'Lỗi nhận dạng', clearAfterMs: 4000);
+      status(e is StateError ? e.message : 'Recognition error', clearAfterMs: 4000);
       return null;
     }
   }
@@ -1941,7 +1950,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    'WEB REMOTE · CÙNG WI-FI',
+                    'WEB REMOTE · SAME WI-FI',
                     style: TextStyle(
                       color: _kGreen,
                       fontSize: 13,
@@ -1952,7 +1961,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                   const SizedBox(height: 12),
                   if (!running) ...[
                     const Text(
-                      'Máy chủ chỉ chạy sau khi bạn bấm Bắt đầu. Chỉ dùng mạng Wi-Fi đáng tin cậy.',
+                      'The server only runs after you press Start. Use a trusted Wi-Fi network.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: _kSoftGreen, fontSize: 12),
                     ),
@@ -1961,11 +1970,11 @@ class _BrowserScreenState extends State<BrowserScreen>
                       key: _panelKeys['start'],
                       autofocus: true,
                       onPressed: _startWebRemote,
-                      child: const Text('BẮT ĐẦU WEB REMOTE'),
+                      child: const Text('START WEB REMOTE'),
                     ),
                   ] else ...[
                     Text(
-                      paired ? 'ĐÃ GHÉP ĐÔI' : 'CHỜ GHÉP ĐÔI',
+                      paired ? 'CONNECTED' : 'WAITING FOR PHONE',
                       style: TextStyle(
                         color: paired ? _kGreen : const Color(0xFFFFCC66),
                         fontWeight: FontWeight.bold,
@@ -1973,7 +1982,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                     ),
                     const SizedBox(height: 10),
                     const Text(
-                      'Mở địa chỉ này trên điện thoại:',
+                      'Open this address on your phone:',
                       style: TextStyle(color: Colors.white70, fontSize: 12),
                     ),
                     SelectableText(
@@ -1985,7 +1994,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                       const Padding(
                         padding: EdgeInsets.only(top: 10),
                         child: Text(
-                          'Mở địa chỉ trên điện thoại cùng Wi-Fi là kết nối ngay. Cổng cố định 8765 — lưu bookmark được.',
+                          'Open the address on a phone on the same Wi-Fi to connect. Fixed port 8765 — bookmark it.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.white60, fontSize: 11),
                         ),
@@ -1999,12 +2008,12 @@ class _BrowserScreenState extends State<BrowserScreen>
                           OutlinedButton(
                             key: _panelKeys['revoke'],
                             onPressed: _revokeWebRemote,
-                            child: const Text('THU HỒI'),
+                            child: const Text('REVOKE'),
                           ),
                         FilledButton.tonal(
                           key: _panelKeys['stop'],
                           onPressed: _stopWebRemote,
-                          child: const Text('DỪNG'),
+                          child: const Text('STOP'),
                         ),
                       ],
                     ),
@@ -2023,7 +2032,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                   const SizedBox(height: 8),
                   if (_confirmExit)
                     const Text(
-                      'Giữ nút lần nữa hoặc chọn XÁC NHẬN để thoát',
+                      'Hold the button again or choose CONFIRM to exit',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Color(0xFFFFCC66), fontSize: 11),
                     ),
@@ -2036,7 +2045,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                         _armExitConfirm();
                       }
                     },
-                    child: Text(_confirmExit ? 'XÁC NHẬN THOÁT' : 'THOÁT TRÌNH DUYỆT'),
+                    child: Text(_confirmExit ? 'CONFIRM EXIT' : 'EXIT BROWSER'),
                   ),
                   TextButton(
                     key: _panelKeys['close'],
@@ -2044,7 +2053,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                       _showWebRemotePanel = false;
                       _confirmExit = false;
                     }),
-                    child: const Text('ĐÓNG'),
+                    child: const Text('CLOSE'),
                   ),
                 ],
               ),
