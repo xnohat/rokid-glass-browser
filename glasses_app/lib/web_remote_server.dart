@@ -453,6 +453,9 @@ class WebRemoteServer {
       case 'history_clear':
       case 'debug_probe':
         break;
+      case 'agent_run':
+        allow('text');
+        if (value['text'] is! String || (value['text'] as String).trim().isEmpty || (value['text'] as String).length > 400) throw const FormatException('Invalid command');
       case 'set_asr_model':
         allow('model');
         if (value['model'] is! String || (value['model'] as String).length > 80) throw const FormatException('Invalid model');
@@ -639,6 +642,10 @@ class WebRemoteServer {
 
   void publishDebug(String payload) {
     if (_authenticated) _send({'type': 'debug', 'payload': payload});
+  }
+
+  void publishAgent(String message) {
+    if (_authenticated) _send({'type': 'agent', 'message': message});
   }
 
   void publishAsrModel(String model, List<String>? models) {

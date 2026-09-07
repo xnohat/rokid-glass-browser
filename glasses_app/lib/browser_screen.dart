@@ -9,6 +9,7 @@ import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'url_keyboard.dart';
 import 'voice_asr.dart';
+import 'browser_agent.dart';
 import 'web_remote_server.dart';
 
 const _kGreen = Color(0xFF00FF00);
@@ -57,6 +58,11 @@ class _BrowserScreenState extends State<BrowserScreen>
   bool _showUrlKeyboard = false;
   bool _showTextKeyboard = false;
   late final VoiceAsr _asr = VoiceAsr(_methodChannel);
+  late final BrowserAgent _agent = BrowserAgent(
+    runTool: _runAgentTool,
+    onStatus: (t) => _setMicStatus(t, clearAfterMs: 0),
+  );
+  bool _agentListening = false;
   bool _micActive = false;
   String? _micStatus;
   Timer? _micStatusTimer;
@@ -1382,6 +1388,8 @@ class _BrowserScreenState extends State<BrowserScreen>
       case 'get_asr_key':
         _webRemote.publishAsrKeyState(await VoiceAsr.loadKey());
         _webRemote.publishAsrModel(await VoiceAsr.loadModel(), null);
+      case 'agent_run':
+        unawaited(_runAgentCommand((cmd['text'] as String).trim()));
       case 'set_asr_model':
         await VoiceAsr.saveModel((cmd['model'] as String?) ?? '');
         _webRemote.publishAsrModel(await VoiceAsr.loadModel(), null);
@@ -1913,6 +1921,129 @@ class _BrowserScreenState extends State<BrowserScreen>
     } catch (e) {
       status(e is StateError ? e.message : 'Recognition error', clearAfterMs: 4000);
       return null;
+    }
+  }
+
+  /// Executes one agent tool against the live page.
+  Future<Map<String, dynamic>> _runAgentTool(String name, Map<String, dynamic> args) async {
+    Future<void> settle([int ms = 900]) =>
+        Future<void>.delayed(Duration(milliseconds: ms));
+    switch (name) {
+      case 'navigate':
+        await _handleCommand({'action': 'navigate', 'url': (args['url'] ?? '').toString()});
+        await settle(2500);
+        return {'ok': true, 'url': _url};
+      case 'back':
+        await _webController.goBack();
+        await settle(1500);
+        return {'ok': true, 'url': _url};
+      case 'forward':
+        await _webController.goForward();
+        await settle(1500);
+        return {'ok': true, 'url': _url};
+      case 'reload':
+        await _webController.reload();
+        await settle(2000);
+        return {'ok': true, 'url': _url};
+      case 'scroll':
+        final dir = (args['direction'] ?? 'down').toString();
+        final small = (args['amount'] ?? '').toString() == 'small';
+        final h = MediaQuery.sizeOf(context).height;
+        switch (dir) {
+          case 'top':
+            await _webController.runJavaScript('window.scrollTo({top:0,behavior:"smooth"})');
+          case 'bottom':
+            await _webController.runJavaScript('window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"})');
+          case 'up':
+            _scrollPage(0, -((small ? h / 4 : h * 0.8).round()));
+          default:
+            _scrollPage(0, (small ? h / 4 : h * 0.8).round());
+        }
+        await settle(600);
+        return {'ok': true};
+      case 'read_page':
+        final r = await _webController.runJavaScriptReturningResult(r'''
+(function(){
+  var SEL='a[href],button,input:not([type=hidden]),select,textarea,[role="button"],[role="link"],[role="searchbox"],[contenteditable="true"]';
+  var out=[],els=[];
+  var all=document.querySelectorAll(SEL);
+  for(var i=0;i<all.length&&els.length<60;i++){
+    var el=all[i],r=el.getBoundingClientRect(),cs=getComputedStyle(el);
+    if(r.width<6||r.height<6)continue;
+    if(cs.visibility==='hidden'||cs.display==='none'||cs.opacity==='0')continue;
+    if(r.bottom<-200||r.top>window.innerHeight+800)continue;
+    var label=(el.getAttribute('aria-label')||el.placeholder||el.value||el.innerText||el.title||'').replace(/\s+/g,' ').trim().slice(0,60);
+    var role=el.tagName.toLowerCase()+(el.type?('['+el.type+']'):'');
+    if(!label&&el.tagName==='A')label=(el.getAttribute('href')||'').slice(0,40);
+    els.push(el);
+    out.push('['+(els.length-1)+'] '+role+' '+label);
+  }
+  window.__rokidAgentEls=els;
+  var body=(document.body?document.body.innerText:'').replace(/\s+/g,' ').trim().slice(0,1200);
+  return JSON.stringify({title:document.title,url:location.href,text:body,elements:out});
+})()''');
+        try {
+          final decoded = jsonDecode(r is String ? jsonDecode(r) as String : r.toString());
+          return Map<String, dynamic>.from(decoded as Map);
+        } catch (_) {
+          return {'raw': r.toString()};
+        }
+      case 'click':
+        final idx = args['index'];
+        final txt = (args['text'] ?? '').toString();
+        final r = await _webController.runJavaScriptReturningResult('''
+(function(){
+  var idx=${idx is int ? idx : -1}, txt=${_jsStr(txt)};
+  var el=null;
+  if(idx>=0&&window.__rokidAgentEls&&window.__rokidAgentEls[idx])el=window.__rokidAgentEls[idx];
+  if(!el&&txt){
+    var cand=Array.prototype.slice.call(document.querySelectorAll('a,button,input,[role="button"],[role="link"],[aria-label]'));
+    el=cand.find(function(e){var t=(e.getAttribute('aria-label')||e.innerText||e.value||'').trim();return t&&t.toLowerCase().indexOf(txt.toLowerCase())>=0;});
+  }
+  if(!el)return 'not_found';
+  el.scrollIntoView({block:'center'});
+  var r=el.getBoundingClientRect(),x=r.left+r.width/2,y=r.top+r.height/2;
+  ['mouseover','mousedown','mouseup','click'].forEach(function(t){el.dispatchEvent(new MouseEvent(t,{bubbles:true,cancelable:true,view:window,clientX:x,clientY:y}));});
+  if(el.tagName==='INPUT'||el.tagName==='TEXTAREA'||el.isContentEditable)el.focus();
+  return 'clicked:'+((el.getAttribute('aria-label')||el.innerText||el.value||el.tagName)+'').replace(/\s+/g,' ').trim().slice(0,40);
+})()''');
+        await settle(1200);
+        return {'result': r.toString().replaceAll('"', ''), 'url': _url};
+      case 'type':
+        await _handleCommand({'action': 'keyboard_type', 'text': (args['text'] ?? '').toString()});
+        await settle(400);
+        return {'ok': true};
+      case 'press_enter':
+        await _handleCommand({'action': 'keyboard_enter'});
+        await settle(2500);
+        return {'ok': true, 'url': _url};
+      default:
+        return {'error': 'unknown tool'};
+    }
+  }
+
+  /// Runs an agent command (from voice or the web remote) with UI feedback.
+  Future<void> _runAgentCommand(String command) async {
+    if (command.trim().isEmpty) return;
+    _setMicStatus('🤖 $command');
+    try {
+      final msg = await _agent.run(command);
+      _setMicStatus('✓ $msg', clearAfterMs: 6000);
+      _webRemote.publishAgent(msg);
+    } catch (e) {
+      final m = e is StateError ? e.message : e.toString();
+      _setMicStatus('Agent: $m', clearAfterMs: 6000);
+      _webRemote.publishAgent('Error: $m');
+    }
+  }
+
+  void _setMicStatus(String? t, {int clearAfterMs = 0}) {
+    _micStatusTimer?.cancel();
+    if (mounted) setState(() => _micStatus = t);
+    if (t != null && clearAfterMs > 0) {
+      _micStatusTimer = Timer(Duration(milliseconds: clearAfterMs), () {
+        if (mounted) setState(() => _micStatus = null);
+      });
     }
   }
 

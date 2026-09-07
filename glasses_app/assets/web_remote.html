@@ -29,6 +29,8 @@
       <div class="row"><button id="rr-back" data-action="back">← Quay lại</button><button id="rr-forward" data-action="forward">Tiến tới →</button><button data-action="reload">↻ Tải lại</button></div>
       <form id="rr-typing" class="row"><input class="grow" id="rr-text" placeholder="Nhập chữ vào ô đang chọn" maxlength="512"><button type="submit">Gửi chữ</button></form>
       <div class="row"><button data-action="backspace">⌫ Xóa</button><button data-action="enter">↵ Enter</button></div>
+      <form id="rr-agent" class="row" style="margin:10px 0"><input id="rr-agent-text" class="grow" placeholder="Ra lệnh cho AI agent (vd: mở youtube tìm palantir ontology)"><button class="primary" type="submit">Chạy</button></form>
+      <div class="feedback" id="rr-agent-state"></div>
       <h2 style="font-size:18px">Touchpad &amp; điều hướng</h2>
       <div class="navgrid">
         <button data-action="scroll_up" aria-label="Cuộn lên" class="nav up">▲</button>
@@ -84,6 +86,7 @@
     if(value.type==='ready'){ready=true;persist();setTimeout(()=>send('get_asr_key'),300);setConnected(true);visibility();const rect=preview.getBoundingClientRect();ws.send(JSON.stringify({type:'viewport',width:Math.round((rect.width||320)*devicePixelRatio),height:Math.round((rect.height||427)*devicePixelRatio)}));setFeedback('Đã ghép đôi · đang nhận màn hình')}
     else if(value.type==='bye'){ready=false;clearToken();badge.textContent='Kính đã thoát';setFeedback('Trình duyệt trên kính đã đóng')}
     else if(value.type==='frame'){pendingFrame=value}
+    else if(value.type==='agent'){byId('rr-agent-state').textContent=value.message}
     else if(value.type==='asr_model'){const sel=byId('rr-asr-model');if(value.models){sel.innerHTML='';for(const m of value.models){const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o)}}if(![...sel.options].some(o=>o.value===value.model)){const o=document.createElement('option');o.value=value.model;o.textContent=value.model;sel.appendChild(o)}sel.value=value.model;if(value.models)setFeedback('Đã tải '+value.models.length+' model')}
     else if(value.type==='asr_key'){byId('rr-asr-state').textContent=value.hasKey?('Đã có key trên kính (…'+(value.tail||'')+')'):'Chưa có key trên kính'}
     else if(value.type==='history'){historyItems=value.items||[];renderHistory()}
@@ -105,6 +108,7 @@
   document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>send(button.dataset.action)));
   byId('rr-mode').addEventListener('change',event=>send('set_visual_mode',{mode:event.target.value}));
   byId('rr-asr-save').addEventListener('click',()=>{const k=byId('rr-asr-key').value.trim();if(!k){setFeedback('Nhập key trước',true);return}send('set_asr_key',{key:k});byId('rr-asr-key').value=''});
+  byId('rr-agent').addEventListener('submit',e=>{e.preventDefault();const t=byId('rr-agent-text').value.trim();if(!t)return;byId('rr-agent-state').textContent='⏳ Agent đang chạy…';send('agent_run',{text:t});byId('rr-agent-text').value=''});
   byId('rr-asr-model').addEventListener('change',e=>send('set_asr_model',{model:e.target.value}));
   byId('rr-asr-fetch').addEventListener('click',()=>{setFeedback('Đang tải model…');send('list_asr_models')});
   byId('rr-asr-clear').addEventListener('click',()=>{if(confirm('Xóa Gemini key khỏi kính?'))send('clear_asr_key')});

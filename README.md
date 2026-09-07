@@ -10,6 +10,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 ![URL keyboard on the glasses](docs/url-keyboard.png)
 ![Text keyboard for page inputs](docs/text-keyboard.png)
 ![Voice input](docs/voice-input.png)
+![AI agent result](docs/agent.png)
 
 ## What you get
 
@@ -24,6 +25,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 - Auto‑reconnect after reload or a short network drop; one controller at a time; revoke/stop from the glasses
 
 **On the glasses**
+- **AI agent (hold the temple button)**: hold → beep + “AGENT LISTENING”, say what you want, press the button once → the command is transcribed and an agent carries it out with browser tools (navigate / read_page / click / type / press_enter / scroll / back / forward / reload). Works for one-shot commands (“refresh”, “scroll down a bit”) and multi-step ones (“open YouTube and find videos about palantir ontology”). Same agent can be driven from the web remote's command box
 - Pages get a **400 px layout viewport** scaled to fit the 320 px glasses screen — responsive sites (Google, YouTube…) render their phone layout instead of cramming into 320 px
 - All on-glasses UI is in English
 - **Voice input (🎤 on both keyboards)**: tap once → beep + “ĐANG NGHE…”, speak, tap ⏹ → text is recognised by Gemini (default **gemini-3.8-flash** (cheapest); pick any model from the web remote after *Fetch models*) and typed into the field. Needs a Gemini API key saved from the web remote (Settings → *Gemini API key*, stored on the glasses only). The RV101 has no Google Speech, so sites’ own voice search cannot work; this replaces it
@@ -56,7 +58,7 @@ While the browser is in the foreground it asks the Rokid system to disable the b
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.11.0.apk
+adb install -r releases/rokid-glass-browser-1.12.0.apk
 ```
 
 ## Use
