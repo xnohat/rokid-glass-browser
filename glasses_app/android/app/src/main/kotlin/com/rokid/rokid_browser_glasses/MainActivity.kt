@@ -64,6 +64,9 @@ class MainActivity : FlutterActivity() {
         }
     }
     private var buttonReceiverRegistered = false
+    @Volatile private var asrStop = false
+    private var asrThread: Thread? = null
+    private var asrFile: java.io.File? = null
 
     private fun setRokidButtonFunctions(shortPress: String, longPress: String) {
         try {
@@ -470,6 +473,80 @@ class MainActivity : FlutterActivity() {
                             result.error("capture_failed", message, null)
                         }
                     )
+                }
+                "beep" -> {
+                    // Google-voice-like cue: rising tone on start, falling on stop.
+                    val kind = (call.arguments as? Map<*, *>)?.get("kind") as? String ?: "start"
+                    Thread {
+                        try {
+                            val rate = 22050
+                            val f1 = if (kind == "start") 660.0 else 880.0
+                            val f2 = if (kind == "start") 880.0 else 660.0
+                            val n = rate / 6
+                            val pcm = ShortArray(n * 2)
+                            for (i in 0 until n) { pcm[i] = (Math.sin(2 * Math.PI * f1 * i / rate) * 9000 * Math.min(1.0, i / 300.0)).toInt().toShort() }
+                            for (i in 0 until n) { pcm[n + i] = (Math.sin(2 * Math.PI * f2 * i / rate) * 9000 * (1 - i.toDouble() / n)).toInt().toShort() }
+                            val at = android.media.AudioTrack.Builder()
+                                .setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ASSISTANCE_SONIFICATION).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
+                                .setAudioFormat(android.media.AudioFormat.Builder().setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO).build())
+                                .setBufferSizeInBytes(pcm.size * 2).setTransferMode(android.media.AudioTrack.MODE_STATIC).build()
+                            at.write(pcm, 0, pcm.size); at.play(); Thread.sleep(400); at.release()
+                        } catch (_: Exception) {}
+                    }.start()
+                    result.success(true)
+                }
+                "asrStart" -> {
+                    if (asrThread != null) { result.success(true); return@setMethodCallHandler }
+                    val f = java.io.File(cacheDir, "asr.wav"); asrFile = f
+                    asrStop = false
+                    val t = Thread {
+                        val rate = 16000
+                        val minBuf = android.media.AudioRecord.getMinBufferSize(rate, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT)
+                        // RV101 audio HAL has no VOICE_RECOGNITION graph (read fails -19);
+                        // VOICE_COMMUNICATION (what the WebView uses) and MIC work.
+                        var rec: android.media.AudioRecord? = null
+                        for (src in intArrayOf(android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION, android.media.MediaRecorder.AudioSource.MIC, android.media.MediaRecorder.AudioSource.DEFAULT)) {
+                            try {
+                                val cand = android.media.AudioRecord(src, rate, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, 8192))
+                                if (cand.state == android.media.AudioRecord.STATE_INITIALIZED) {
+                                    cand.startRecording()
+                                    val probe = ByteArray(1024)
+                                    val n = cand.read(probe, 0, probe.size)
+                                    if (n > 0) { rec = cand; break } else { cand.release() }
+                                } else cand.release()
+                            } catch (_: Exception) {}
+                        }
+                        val out = java.io.ByteArrayOutputStream()
+                        if (rec != null) {
+                            val buf = ByteArray(4096)
+                            val deadline = System.currentTimeMillis() + 15000
+                            while (!asrStop && System.currentTimeMillis() < deadline) {
+                                val n = rec.read(buf, 0, buf.size); if (n > 0) out.write(buf, 0, n)
+                            }
+                            try { rec.stop() } catch (_: Exception) {}
+                            rec.release()
+                        }
+                        val pcm = out.toByteArray()
+                        java.io.FileOutputStream(f).use { fo ->
+                            val h = java.nio.ByteBuffer.allocate(44).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                            h.put("RIFF".toByteArray()).putInt(36 + pcm.size).put("WAVE".toByteArray()).put("fmt ".toByteArray())
+                                .putInt(16).putShort(1).putShort(1).putInt(rate).putInt(rate * 2).putShort(2).putShort(16)
+                                .put("data".toByteArray()).putInt(pcm.size)
+                            fo.write(h.array()); fo.write(pcm)
+                        }
+                        asrThread = null
+                    }
+                    asrThread = t; t.start()
+                    result.success(true)
+                }
+                "asrStop" -> {
+                    asrStop = true
+                    val t = asrThread
+                    Thread {
+                        try { t?.join(3000) } catch (_: Exception) {}
+                        val f = asrFile
+                        runOnUiThread { result.success(if (f != null && f.exists()) f.absolutePath else null) }
+                    }.start()
                 }
                 "cursorScreenPos" -> {
                     // Actual on-screen centre of the cursor dot in window logical px.

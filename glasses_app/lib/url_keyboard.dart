@@ -108,6 +108,11 @@ class UrlKeyboard extends StatefulWidget {
   final VoidCallback? onBackspace;
   final VoidCallback? onEnter;
   final VoidCallback? onClearField;
+  /// Push-to-talk: called on mic key press; returns recognised text or null.
+  final Future<String?> Function()? onMic;
+  final bool micActive;
+  /// Status line shown inside the keyboard (listening / recognising / error).
+  final String? micStatus;
   final String initialText;
   final UrlKeyboardController controller;
   final void Function(String url) onGo;
@@ -119,6 +124,9 @@ class UrlKeyboard extends StatefulWidget {
     this.onBackspace,
     this.onEnter,
     this.onClearField,
+    this.onMic,
+    this.micActive = false,
+    this.micStatus,
     required this.initialText,
     required this.controller,
     required this.onGo,
@@ -146,11 +154,11 @@ class UrlKeyboardState extends State<UrlKeyboard> {
     [_K('q', insert: 'q'), _K('w', insert: 'w'), _K('e', insert: 'e'), _K('r', insert: 'r'), _K('t', insert: 't'), _K('y', insert: 'y'), _K('u', insert: 'u'), _K('i', insert: 'i'), _K('o', insert: 'o'), _K('p', insert: 'p')],
     [_K('a', insert: 'a'), _K('s', insert: 's'), _K('d', insert: 'd'), _K('f', insert: 'f'), _K('g', insert: 'g'), _K('h', insert: 'h'), _K('j', insert: 'j'), _K('k', insert: 'k'), _K('l', insert: 'l'), _K('-', insert: '-')],
     [_K('z', insert: 'z'), _K('x', insert: 'x'), _K('c', insert: 'c'), _K('v', insert: 'v'), _K('b', insert: 'b'), _K('n', insert: 'n'), _K('m', insert: 'm'), _K('_', insert: '_'), _K('=', insert: '='), _K('&', insert: '&')],
-    [_K(':', insert: ':'), _K('/', insert: '/'), _K('?', insert: '?'), _K('.', insert: '.'), _K('#', insert: '#'), _K('%', insert: '%'), _K('@', insert: '@'), _K('▲', action: 'up'), _K('▼', action: 'down'), _K('GO', action: 'go', w: 1.4)],
+    [_K(':', insert: ':'), _K('/', insert: '/'), _K('?', insert: '?'), _K('.', insert: '.'), _K('#', insert: '#'), _K('%', insert: '%'), _K('@', insert: '@'), _K('▲', action: 'up'), _K('▼', action: 'down'), _K('🎤', action: 'mic', w: 1.2), _K('GO', action: 'go', w: 1.4)],
   ];
 
   static const _textRows = <List<_K>>[
-    [_K('✕ Xóa ô', action: 'clearfield', w: 2.4), _K('␣', insert: ' ', w: 2.2), _K('⌫', action: 'backspace', w: 1.6), _K('ENTER', action: 'enter', w: 2)],
+    [_K('✕ Xóa ô', action: 'clearfield', w: 2.2), _K('🎤', action: 'mic', w: 1.3), _K('␣', insert: ' ', w: 1.8), _K('⌫', action: 'backspace', w: 1.5), _K('ENTER', action: 'enter', w: 1.9)],
     [_K('1', insert: '1'), _K('2', insert: '2'), _K('3', insert: '3'), _K('4', insert: '4'), _K('5', insert: '5'), _K('6', insert: '6'), _K('7', insert: '7'), _K('8', insert: '8'), _K('9', insert: '9'), _K('0', insert: '0')],
     [_K('q', insert: 'q'), _K('w', insert: 'w'), _K('e', insert: 'e'), _K('r', insert: 'r'), _K('t', insert: 't'), _K('y', insert: 'y'), _K('u', insert: 'u'), _K('i', insert: 'i'), _K('o', insert: 'o'), _K('p', insert: 'p')],
     [_K('a', insert: 'a'), _K('s', insert: 's'), _K('d', insert: 'd'), _K('f', insert: 'f'), _K('g', insert: 'g'), _K('h', insert: 'h'), _K('j', insert: 'j'), _K('k', insert: 'k'), _K('l', insert: 'l'), _K('⇧', action: 'shift')],
@@ -183,6 +191,13 @@ class UrlKeyboardState extends State<UrlKeyboard> {
         return;
       }
       switch (k.action) {
+        case 'mic':
+          widget.onMic?.call().then((t) {
+            if (t == null || t.isEmpty || !mounted) return;
+            text += t;
+            widget.onType?.call(t);
+            setState(() {});
+          });
         case 'clearfield':
           text = '';
           widget.onClearField?.call();
@@ -208,6 +223,13 @@ class UrlKeyboardState extends State<UrlKeyboard> {
       return;
     }
     switch (k.action) {
+      case 'mic':
+        widget.onMic?.call().then((t) {
+          if (t == null || t.isEmpty || !mounted) return;
+          text += t;
+          selected = -1;
+          _refresh();
+        });
       case 'clear':
         text = '';
         selected = -1;
@@ -298,12 +320,12 @@ class UrlKeyboardState extends State<UrlKeyboard> {
             height: 29,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: k.action == 'go' ? const Color(0xFF184818) : const Color(0xFF0B140B),
-              border: Border.all(color: special ? _green : const Color(0xFF2E5A2E)),
+              color: (k.action == 'mic' && widget.micActive) ? const Color(0xFF5A1010) : k.action == 'go' ? const Color(0xFF184818) : const Color(0xFF0B140B),
+              border: Border.all(color: (k.action == 'mic' && widget.micActive) ? const Color(0xFFFF4444) : special ? _green : const Color(0xFF2E5A2E), width: (k.action == 'mic' && widget.micActive) ? 2 : 1),
               borderRadius: BorderRadius.circular(5),
             ),
             child: Text(
-              k.label,
+              (k.action == 'mic' && widget.micActive) ? '⏹' : k.label,
               style: TextStyle(
                 color: special ? _green : _soft,
                 fontSize: k.label.length > 2 ? 10 : 15,
@@ -331,7 +353,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Row(children: [
-                  Expanded(child: Text(text.isEmpty ? 'Đang gõ vào ô trên trang…' : '$text▏', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: text.isEmpty ? const Color(0xFF4A7A4A) : Colors.white, fontSize: 12))),
+                  Expanded(child: Text(widget.micStatus ?? (text.isEmpty ? 'Đang gõ vào ô trên trang…' : '$text▏'), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: widget.micStatus != null ? const Color(0xFFFF7777) : text.isEmpty ? const Color(0xFF4A7A4A) : Colors.white, fontSize: 12, fontWeight: widget.micStatus != null ? FontWeight.bold : FontWeight.normal))),
                   if (shift) const Text('SHIFT', style: TextStyle(color: _green, fontSize: 10, fontWeight: FontWeight.bold)),
                 ]),
               ),
@@ -362,10 +384,10 @@ class UrlKeyboardState extends State<UrlKeyboard> {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        text.isEmpty ? 'Nhập địa chỉ hoặc tìm kiếm' : '$text▏',
+                        widget.micStatus ?? (text.isEmpty ? 'Nhập địa chỉ hoặc tìm kiếm' : '$text▏'),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: text.isEmpty ? const Color(0xFF4A7A4A) : Colors.white, fontSize: 13),
+                        style: TextStyle(color: widget.micStatus != null ? const Color(0xFFFF7777) : text.isEmpty ? const Color(0xFF4A7A4A) : Colors.white, fontSize: 13),
                       ),
                     ),
                   ),

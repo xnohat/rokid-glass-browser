@@ -8,6 +8,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'url_keyboard.dart';
+import 'voice_asr.dart';
 import 'web_remote_server.dart';
 
 const _kGreen = Color(0xFF00FF00);
@@ -52,6 +53,10 @@ class _BrowserScreenState extends State<BrowserScreen>
   bool _showWebRemotePanel = false;
   bool _showUrlKeyboard = false;
   bool _showTextKeyboard = false;
+  late final VoiceAsr _asr = VoiceAsr(_methodChannel);
+  bool _micActive = false;
+  String? _micStatus;
+  Timer? _micStatusTimer;
   final GlobalKey<UrlKeyboardState> _textKbKey = GlobalKey<UrlKeyboardState>();
   final GlobalKey _castKey = GlobalKey();
   final UrlKeyboardController _urlHistory = UrlKeyboardController();
@@ -171,6 +176,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     _confirmExitTimer?.cancel();
     _modeToastTimer?.cancel();
     _hwPressTimer?.cancel();
+    _micStatusTimer?.cancel();
     _glideTimer?.cancel();
     unawaited(_webRemote.stop());
     super.dispose();
@@ -794,6 +800,10 @@ class _BrowserScreenState extends State<BrowserScreen>
         if (x != null && y != null) {
           _cursorX = x.clamp(0, 480);
           _cursorY = y.clamp(0, 640);
+          _cursorVisible = true;
+          _syncCursor();
+          // Let the native overlay settle so cursorScreenPos reflects the new spot.
+          await Future<void>.delayed(const Duration(milliseconds: 40));
           await _handleCommand({'action': 'cursor_click'});
         }
       case 'type':
@@ -1355,6 +1365,14 @@ class _BrowserScreenState extends State<BrowserScreen>
   return JSON.stringify(out);
 })()''');
         _webRemote.publishDebug(r.toString());
+      case 'set_asr_key':
+        await VoiceAsr.saveKey((cmd['key'] as String?) ?? '');
+        _webRemote.publishAsrKeyState(await VoiceAsr.loadKey());
+      case 'clear_asr_key':
+        await VoiceAsr.saveKey('');
+        _webRemote.publishAsrKeyState('');
+      case 'get_asr_key':
+        _webRemote.publishAsrKeyState(await VoiceAsr.loadKey());
       case 'history_list':
         _webRemote.publishHistory(_urlHistory.history);
       case 'history_remove':
@@ -1836,6 +1854,48 @@ class _BrowserScreenState extends State<BrowserScreen>
       ? 'CUỘN TRANG'
       : (_mouseAxisVertical ? 'CHUỘT ↕ DỌC' : 'CHUỘT ↔ NGANG');
 
+  /// Push-to-talk shared by both keyboards: first press starts recording,
+  /// second press stops and transcribes. Returns text on the second press.
+  int _micLastPressMs = 0;
+  Future<String?> _micPress() async {
+    // One physical tap can reach us twice (overlay hit-test + gesture); ignore
+    // repeats inside 500 ms so a single tap never starts AND stops recording.
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs - _micLastPressMs < 500) return null;
+    _micLastPressMs = nowMs;
+    void status(String? t, {int clearAfterMs = 0}) {
+      _micStatusTimer?.cancel();
+      setState(() => _micStatus = t);
+      if (t != null && clearAfterMs > 0) {
+        _micStatusTimer = Timer(Duration(milliseconds: clearAfterMs), () {
+          if (mounted) setState(() => _micStatus = null);
+        });
+      }
+    }
+    if (!_micActive) {
+      try {
+        await _asr.start();
+        _methodChannel.invokeMethod('beep', {'kind': 'start'}).catchError((_) {});
+        setState(() => _micActive = true);
+        status('🎤 ĐANG NGHE… nói rồi bấm ⏹ để dừng');
+      } catch (e) {
+        status('Không mở được micro', clearAfterMs: 2500);
+      }
+      return null;
+    }
+    setState(() => _micActive = false);
+    _methodChannel.invokeMethod('beep', {'kind': 'stop'}).catchError((_) {});
+    status('⏳ Đang nhận dạng (Gemini)…');
+    try {
+      final t = await _asr.stopAndTranscribe();
+      status(t.isEmpty ? 'Không nghe rõ, thử lại' : null, clearAfterMs: 2500);
+      return t;
+    } catch (e) {
+      status(e is StateError ? e.message : 'Lỗi nhận dạng', clearAfterMs: 4000);
+      return null;
+    }
+  }
+
   void _showModeToast(String text) {
     _modeToastTimer?.cancel();
     setState(() => _modeToast = text);
@@ -2123,6 +2183,9 @@ class _BrowserScreenState extends State<BrowserScreen>
                     _handleCommand({'action': 'keyboard_enter'});
                   },
                   onClearField: () => _handleCommand({'action': 'keyboard_clear_field'}),
+                  onMic: _micPress,
+                  micActive: _micActive,
+                  micStatus: _micStatus,
                   onClose: () => setState(() => _showTextKeyboard = false),
                 ),
               if (_showUrlKeyboard)
@@ -2134,6 +2197,9 @@ class _BrowserScreenState extends State<BrowserScreen>
                     setState(() => _showUrlKeyboard = false);
                     _handleCommand({'action': 'navigate', 'url': u});
                   },
+                  onMic: _micPress,
+                  micActive: _micActive,
+                  micStatus: _micStatus,
                   onClose: () => setState(() => _showUrlKeyboard = false),
                 ),
               // Cursor is rendered as a native Android View in the DecorView

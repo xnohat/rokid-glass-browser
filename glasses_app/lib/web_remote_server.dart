@@ -446,10 +446,15 @@ class WebRemoteServer {
     bool finiteUnit(dynamic number) =>
         number is num && number.isFinite && number >= 0 && number <= 1;
     switch (action) {
+      case 'get_asr_key':
+      case 'clear_asr_key':
       case 'history_list':
       case 'history_clear':
       case 'debug_probe':
         break;
+      case 'set_asr_key':
+        allow('key');
+        if (value['key'] is! String || (value['key'] as String).length > 200) throw const FormatException('Invalid key');
       case 'history_remove':
         allow('url');
         if (value['url'] is! String) throw const FormatException('Invalid URL');
@@ -630,6 +635,12 @@ class WebRemoteServer {
 
   void publishDebug(String payload) {
     if (_authenticated) _send({'type': 'debug', 'payload': payload});
+  }
+
+  void publishAsrKeyState(String key) {
+    if (_authenticated) {
+      _send({'type': 'asr_key', 'hasKey': key.isNotEmpty, 'tail': key.length > 4 ? key.substring(key.length - 4) : ''});
+    }
   }
 
   void publishHistory(List<String> items) {
