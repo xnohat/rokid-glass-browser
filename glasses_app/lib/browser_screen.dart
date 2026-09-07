@@ -63,6 +63,8 @@ class _BrowserScreenState extends State<BrowserScreen>
     onStatus: (t) => _setMicStatus(t, clearAfterMs: 0),
   );
   bool _agentListening = false;
+  bool _agentStarting = false;
+  int _agentListenStartMs = 0;
   bool _micActive = false;
   String? _micStatus;
   Timer? _micStatusTimer;
@@ -865,6 +867,10 @@ class _BrowserScreenState extends State<BrowserScreen>
         // the command. This must fire exactly once and never fall through to the
         // mouse-mode toggle below.
         if (_agentListening) {
+          // The release of the activating hold can arrive here as an UP. Ignore
+          // any UP within 1s of starting so it does not stop recording before
+          // the user's real "stop" press.
+          if (nowMs - _agentListenStartMs < 1000) return;
           _agentListening = false;
           unawaited(
             _methodChannel.invokeMethod('beep', {'kind': 'stop'}).catchError((_) => null),
@@ -912,6 +918,7 @@ class _BrowserScreenState extends State<BrowserScreen>
         // (Exit lives on the HUD power icon, the web remote and the start panel.)
         _hwPressTimer?.cancel();
         _hwPressCount = 0;
+        if (_agentStarting) return; // mid-startup, ignore
         if (_agentListening) {
           _agentListening = false;
           try {
@@ -920,14 +927,21 @@ class _BrowserScreenState extends State<BrowserScreen>
           _setMicStatus('Agent cancelled', clearAfterMs: 2000);
           return;
         }
+        // Mark synchronously so a duplicate LONG (same physical hold) is a no-op
+        // and a stray UP during startup cannot slip through.
+        if (_agentStarting) return;
+        _agentStarting = true;
         try {
           await _asr.start();
+          _agentStarting = false;
           _agentListening = true;
+          _agentListenStartMs = DateTime.now().millisecondsSinceEpoch;
           unawaited(
             _methodChannel.invokeMethod('beep', {'kind': 'start'}).catchError((_) => null),
           );
           _setMicStatus('🤖 AGENT LISTENING… press the button once to run');
         } catch (_) {
+          _agentStarting = false;
           _setMicStatus('Cannot open microphone', clearAfterMs: 2500);
         }
       case 'cursor_dblclick':
