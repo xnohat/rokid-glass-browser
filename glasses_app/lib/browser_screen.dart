@@ -1924,7 +1924,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                       const Padding(
                         padding: EdgeInsets.only(top: 10),
                         child: Text(
-                          'Mở địa chỉ trên điện thoại cùng Wi-Fi là kết nối ngay.',
+                          'Mở địa chỉ trên điện thoại cùng Wi-Fi là kết nối ngay. Cổng cố định 8765 — lưu bookmark được.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: Colors.white60, fontSize: 11),
                         ),

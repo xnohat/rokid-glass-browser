@@ -24,6 +24,7 @@ class WebRemoteServer {
     InternetAddress? bindAddress,
     this.pairingLifetime = const Duration(minutes: 5),
     this.reconnectGrace = const Duration(seconds: 60),
+    this.preferredPort = 8765,
     bool allowLoopbackForTesting = false,
   }) : _requestedAddress = bindAddress,
        _allowLoopbackForTesting = allowLoopbackForTesting;
@@ -35,6 +36,8 @@ class WebRemoteServer {
   final void Function(WebRemoteStatus status)? onStatusChanged;
   final Duration pairingLifetime;
   final Duration reconnectGrace;
+  /// Preferred listening port (bookmarkable). 0 = OS assigned.
+  final int preferredPort;
   Timer? _graceTimer;
   int _generation = 0;
   bool _paused = false;
@@ -107,7 +110,14 @@ class WebRemoteServer {
       throw StateError('No private IPv4 Wi-Fi/LAN address is available');
     }
     _rotateCredentials();
-    final server = await HttpServer.bind(bindAddress, 0, shared: false);
+    // Fixed port so the phone can bookmark the address; fall back to an OS
+    // assigned port only if it is taken.
+    HttpServer server;
+    try {
+      server = await HttpServer.bind(bindAddress, preferredPort, shared: false);
+    } on SocketException {
+      server = await HttpServer.bind(bindAddress, 0, shared: false);
+    }
     _server = server;
     _requests = server.listen(
       _handle,
@@ -222,13 +232,16 @@ class WebRemoteServer {
         await _reject(request, HttpStatus.unauthorized, 'Incorrect pairing code');
         return;
       }
-      if (_sessionToken != null || _controllerReserved) {
-        await _reject(
-          request,
-          HttpStatus.conflict,
-          'A controller is already paired',
-        );
-        return;
+      // No pairing code (owner decision): a fresh /pair simply REPLACES the
+      // previous controller. A phone that refreshed after being backgrounded
+      // must be able to reconnect immediately instead of waiting for the old
+      // session's grace period to expire.
+      if (_controller != null || _controllerReserved) {
+        final old = _controller;
+        _releaseController(old, hard: false);
+        try {
+          await old?.close(WebSocketStatus.goingAway, 'Replaced by a new controller');
+        } catch (_) {}
       }
       _sessionToken = base64Url.encode(
         List<int>.generate(32, (_) => _random.nextInt(256)),

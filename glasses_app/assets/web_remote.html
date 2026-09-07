@@ -65,11 +65,13 @@
   const persist=()=>{try{if(token)sessionStorage.setItem(storageKey,JSON.stringify({token,deadline}));else sessionStorage.removeItem(storageKey)}catch(_){}};
   const clearToken=()=>{token=null;deadline=0;persist();clearTimeout(retryTimer);setConnected(false)};
   const visibility=()=>{if(ready&&socket?.readyState===WebSocket.OPEN)socket.send(JSON.stringify({type:document.hidden||decoding?'pause':'resume'}))};
-  document.addEventListener('visibilitychange',visibility);
-  const retry=()=>{if(!token)return;if(!deadline){deadline=Date.now()+60000;persist()}const remaining=deadline-Date.now();if(remaining<=0){clearToken();return}badge.textContent='Đang kết nối lại…';retryTimer=setTimeout(()=>{if(Date.now()>=deadline)clearToken();else connect()},Math.min(1000*2**Math.min(attempt++,3),remaining))};
+  document.addEventListener('visibilitychange',()=>{visibility();if(!document.hidden&&(!socket||socket.readyState>1)){clearTimeout(retryTimer);attempt=0;retry()}});
+  window.addEventListener('pageshow',()=>{if(!socket||socket.readyState>1){clearTimeout(retryTimer);attempt=0;retry()}});
+  const repair=async()=>{try{const r=await fetch('/pair',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:''})});if(!r.ok)throw 0;const v=await r.json();token=v.token;deadline=Date.now()+60000;persist();connect()}catch(_){badge.textContent='Không thấy kính';retryTimer=setTimeout(repair,3000)}};
+  const retry=()=>{if(!token){repair();return}if(!deadline){deadline=Date.now()+60000;persist()}const remaining=deadline-Date.now();if(remaining<=0){clearToken();repair();return}badge.textContent='Đang kết nối lại…';retryTimer=setTimeout(()=>{if(Date.now()>=deadline){clearToken();repair()}else connect()},Math.min(1000*2**Math.min(attempt++,3),remaining))};
   const connect=()=>{clearTimeout(retryTimer);if(!token)return;const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);socket=ws;ready=false;pendingFrame=null;ws.binaryType='blob';
     ws.onopen=()=>{if(socket===ws)ws.send(JSON.stringify({type:'auth',token}))};
-    ws.onclose=event=>{if(socket!==ws)return;ready=false;pendingFrame=null;setConnected(false);if(event.reason==='Revoked by owner'||event.reason==='Server stopped'||event.code===1008){clearToken();return}retry()};
+    ws.onclose=event=>{if(socket!==ws)return;ready=false;pendingFrame=null;setConnected(false);if(event.reason==='Server stopped'){clearToken();return}if(event.reason==='Revoked by owner'||event.reason==='Replaced by a new controller'||event.code===1008){clearToken();retryTimer=setTimeout(repair,1500);return}retry()};
     ws.onerror=()=>{if(socket===ws)setFeedback('Không thể kết nối WebSocket',true)};
     ws.onmessage=event=>onMessage(event,ws);
   };
@@ -80,7 +82,7 @@
     else if(value.type==='history'){historyItems=value.items||[];renderHistory()}
     else if(value.type==='state'){if(value.url)byId('rr-url').value=value.url;if(value.visualMode)byId('rr-mode').value=value.visualMode;byId('rr-back').disabled=!value.canGoBack;byId('rr-forward').disabled=!value.canGoForward}
     else if(value.type==='command_ok'){setFeedback('Lệnh đã được kính nhận')}
-    else if(value.type==='error'){setFeedback(value.message||value.code,true);if(value.code==='unauthorized'||value.code==='revoked'){clearToken();ws.close()}}return}
+    else if(value.type==='error'){setFeedback(value.message||value.code,true);if(value.code==='unauthorized'||value.code==='revoked'){clearToken();ws.close();retryTimer=setTimeout(repair,800)}}return}
     if(!pendingFrame||decoding){ws.close();return}const meta=pendingFrame;pendingFrame=null;if(event.data.size!==meta.byteLength){ws.close();return}
     decoding=true;const nextUrl=URL.createObjectURL(event.data);const image=new Image();image.src=nextUrl;
     try{await image.decode();if(socket!==ws||ws.readyState!==WebSocket.OPEN){URL.revokeObjectURL(nextUrl);return}attempt=0;deadline=0;persist();frame.src=nextUrl;byId('rr-placeholder').classList.add('hidden');if(objectUrl)URL.revokeObjectURL(objectUrl);objectUrl=nextUrl;preview.dataset.frameCount=String(++frameCount);ws.send(JSON.stringify({type:'ack',frameId:meta.frameId}))}
