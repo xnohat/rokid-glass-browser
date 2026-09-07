@@ -101,12 +101,24 @@ class _K {
 }
 
 class UrlKeyboard extends StatefulWidget {
+  /// 'url' = address bar (suggestions, GO). 'text' = typing into a web field
+  /// (no suggestions, keys stream to the page, ENTER submits).
+  final String mode;
+  final void Function(String text)? onType;
+  final VoidCallback? onBackspace;
+  final VoidCallback? onEnter;
+  final VoidCallback? onClearField;
   final String initialText;
   final UrlKeyboardController controller;
   final void Function(String url) onGo;
   final VoidCallback onClose;
   const UrlKeyboard({
     super.key,
+    this.mode = 'url',
+    this.onType,
+    this.onBackspace,
+    this.onEnter,
+    this.onClearField,
     required this.initialText,
     required this.controller,
     required this.onGo,
@@ -137,6 +149,17 @@ class UrlKeyboardState extends State<UrlKeyboard> {
     [_K(':', insert: ':'), _K('/', insert: '/'), _K('?', insert: '?'), _K('.', insert: '.'), _K('#', insert: '#'), _K('%', insert: '%'), _K('@', insert: '@'), _K('▲', action: 'up'), _K('▼', action: 'down'), _K('GO', action: 'go', w: 1.4)],
   ];
 
+  static const _textRows = <List<_K>>[
+    [_K('✕ Xóa ô', action: 'clearfield', w: 2.4), _K('␣', insert: ' ', w: 2.2), _K('⌫', action: 'backspace', w: 1.6), _K('ENTER', action: 'enter', w: 2)],
+    [_K('1', insert: '1'), _K('2', insert: '2'), _K('3', insert: '3'), _K('4', insert: '4'), _K('5', insert: '5'), _K('6', insert: '6'), _K('7', insert: '7'), _K('8', insert: '8'), _K('9', insert: '9'), _K('0', insert: '0')],
+    [_K('q', insert: 'q'), _K('w', insert: 'w'), _K('e', insert: 'e'), _K('r', insert: 'r'), _K('t', insert: 't'), _K('y', insert: 'y'), _K('u', insert: 'u'), _K('i', insert: 'i'), _K('o', insert: 'o'), _K('p', insert: 'p')],
+    [_K('a', insert: 'a'), _K('s', insert: 's'), _K('d', insert: 'd'), _K('f', insert: 'f'), _K('g', insert: 'g'), _K('h', insert: 'h'), _K('j', insert: 'j'), _K('k', insert: 'k'), _K('l', insert: 'l'), _K('⇧', action: 'shift')],
+    [_K('z', insert: 'z'), _K('x', insert: 'x'), _K('c', insert: 'c'), _K('v', insert: 'v'), _K('b', insert: 'b'), _K('n', insert: 'n'), _K('m', insert: 'm'), _K(',', insert: ','), _K('.', insert: '.'), _K('?', insert: '?')],
+    [_K('@', insert: '@'), _K('#', insert: '#'), _K('!', insert: '!'), _K('-', insert: '-'), _K('_', insert: '_'), _K(':', insert: ':'), _K('/', insert: '/'), _K("'", insert: "'"), _K('"', insert: '"'), _K('ĐÓNG', action: 'close', w: 1.4)],
+  ];
+  bool shift = false;
+  List<List<_K>> get rows => widget.mode == 'text' ? _textRows : _rows;
+
   @override
   void initState() {
     super.initState();
@@ -150,6 +173,34 @@ class UrlKeyboardState extends State<UrlKeyboard> {
   }
 
   void _press(_K k) {
+    if (widget.mode == 'text') {
+      if (k.insert != null) {
+        final ch = shift ? k.insert!.toUpperCase() : k.insert!;
+        text += ch;
+        widget.onType?.call(ch);
+        if (shift) shift = false;
+        setState(() {});
+        return;
+      }
+      switch (k.action) {
+        case 'clearfield':
+          text = '';
+          widget.onClearField?.call();
+          setState(() {});
+        case 'backspace':
+          if (text.isNotEmpty) text = text.substring(0, text.length - 1);
+          widget.onBackspace?.call();
+          setState(() {});
+        case 'enter':
+          widget.onEnter?.call();
+        case 'shift':
+          shift = !shift;
+          setState(() {});
+        case 'close':
+          widget.onClose();
+      }
+      return;
+    }
     if (k.insert != null) {
       text += k.insert!;
       selected = -1;
@@ -198,7 +249,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
     }
     for (final entry in _keys.entries) {
       if (_contains(entry.value, p)) {
-        final k = _rows.expand((r) => r).firstWhere((k) => k.label == entry.key);
+        final k = rows.expand((r) => r).firstWhere((k) => k.label == entry.key);
         _press(k);
         return true;
       }
@@ -207,8 +258,21 @@ class UrlKeyboardState extends State<UrlKeyboard> {
       widget.onClose();
       return true;
     }
+    // Text mode: clicking outside the keyboard closes it so the user can
+    // reach the page underneath.
+    if (widget.mode == 'text') {
+      final box = _sheetKey.currentContext?.findRenderObject() as RenderBox?;
+      if (box != null && box.hasSize) {
+        final o = box.localToGlobal(Offset.zero);
+        if (!(o & box.size).contains(p)) {
+          widget.onClose();
+          return false; // let the click pass through to the page
+        }
+      }
+    }
     return true; // consume clicks on the backdrop while open
   }
+  final GlobalKey _sheetKey = GlobalKey();
 
   final GlobalKey _closeKey = GlobalKey();
 
@@ -254,6 +318,29 @@ class UrlKeyboardState extends State<UrlKeyboard> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.mode == 'text') {
+      return Positioned(
+        left: 0, right: 0, bottom: 0,
+        child: Container(
+          key: _sheetKey,
+          color: const Color(0xF2000000),
+          padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(children: [
+                  Expanded(child: Text(text.isEmpty ? 'Đang gõ vào ô trên trang…' : '$text▏', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: text.isEmpty ? const Color(0xFF4A7A4A) : Colors.white, fontSize: 12))),
+                  if (shift) const Text('SHIFT', style: TextStyle(color: _green, fontSize: 10, fontWeight: FontWeight.bold)),
+                ]),
+              ),
+              for (final row in rows) Row(children: [for (final k in row) _key(k)]),
+            ],
+          ),
+        ),
+      );
+    }
     return Positioned.fill(
       child: ColoredBox(
         color: const Color(0xF2000000),
@@ -363,7 +450,7 @@ class UrlKeyboardState extends State<UrlKeyboard> {
               padding: const EdgeInsets.symmetric(horizontal: 6),
               child: Column(
                 children: [
-                  for (final row in _rows) Row(children: [for (final k in row) _key(k)]),
+                  for (final row in rows) Row(children: [for (final k in row) _key(k)]),
                 ],
               ),
             ),

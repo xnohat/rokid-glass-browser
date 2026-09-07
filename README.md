@@ -8,6 +8,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 
 ![Web remote](docs/web-remote.png)
 ![URL keyboard on the glasses](docs/url-keyboard.png)
+![Text keyboard for page inputs](docs/text-keyboard.png)
 
 ## What you get
 
@@ -24,7 +25,9 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 **On the glasses**
 - **Wi‑Fi auto-on** when the app opens (also persists Rokid's own Wi‑Fi preference so it survives reboot — technique from [rokid-wifi-on](https://github.com/ksuzukigh/rokid-wifi-on))
 - **URL keyboard** (click the address bar): QWERTY + digits + `: / ? . # % @`, `http://` `https://` `www.` `.com`, ✕ clear, GO — big keys for the 2‑axis cursor. Autocomplete from your history and popular services (root domains first, deep paths after), ▲▼ to pick, ✕ to forget an entry
-- Toolbar next to the address bar: ◀ ▶ ▲ ▼ ■ ↻ ⏻ — click them with the cursor
+- **Text keyboard**: click any input on a page and a compact keyboard slides up (letters, digits, symbols, ⇧, ␣, ⌫, **✕ Xóa ô** clears the field, ENTER submits). Clicking the page hides it, like a phone
+- **Mouse mode double-tap** on the touchpad = double-click at the cursor
+- Toolbar next to the address bar: ◀ ▶ history, ‹ › ˄ ˅ send arrow keys to the page, ■ stop, ↻ reload, ⏻ exit — all clickable with the cursor: ◀ ▶ ▲ ▼ ■ ↻ ⏻ — click them with the cursor
 - Two modes, toggled with the temple button: **MOUSE** (swipe moves the cursor, tap clicks) and **SCROLL** (swipe scrolls / jumps between elements, tap activates)
 - Smooth cursor glide with acceleration on repeated swipes; cursor stays visible in mouse mode
 - Element‑jump starts from the first element currently on screen, not the top of the page
@@ -47,7 +50,7 @@ While the browser is in the foreground it asks the Rokid system to disable the b
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.8.5.apk
+adb install -r releases/rokid-glass-browser-1.9.0.apk
 ```
 
 ## Use

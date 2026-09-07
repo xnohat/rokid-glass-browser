@@ -51,6 +51,8 @@ class _BrowserScreenState extends State<BrowserScreen>
   String? _webRemoteError;
   bool _showWebRemotePanel = false;
   bool _showUrlKeyboard = false;
+  bool _showTextKeyboard = false;
+  final GlobalKey<UrlKeyboardState> _textKbKey = GlobalKey<UrlKeyboardState>();
   final GlobalKey _castKey = GlobalKey();
   final UrlKeyboardController _urlHistory = UrlKeyboardController();
   final GlobalKey<UrlKeyboardState> _urlKbKey = GlobalKey<UrlKeyboardState>();
@@ -228,7 +230,12 @@ class _BrowserScreenState extends State<BrowserScreen>
           if (!mounted) return;
           final editing = msg.message == '1';
           if (_editingText != editing) {
-            setState(() => _editingText = editing);
+            setState(() {
+              _editingText = editing;
+              // Field focused by the glasses cursor -> compact text keyboard.
+              if (editing && !_showUrlKeyboard) _showTextKeyboard = true;
+              if (!editing) _showTextKeyboard = false;
+            });
             _applyHudInset(fullscreen: _videoFullscreen);
           }
         },
@@ -852,9 +859,17 @@ class _BrowserScreenState extends State<BrowserScreen>
           _armExitConfirm();
         }
       case 'touchpad_back':
-        // One-finger double-tap: Back only in scroll mode. In mouse mode it is
-        // ignored so a fast double click never navigates away by accident.
-        if (!_swipeScrollsPage) return;
+        // One-finger double-tap: mouse mode = double-click at the cursor;
+        // scroll mode = Back.
+        if (!_swipeScrollsPage) {
+          await _handleCommand({'action': 'cursor_click'});
+          await Future<void>.delayed(const Duration(milliseconds: 90));
+          await _handleCommand({'action': 'cursor_click'});
+          _webController.runJavaScript('''
+(function(x,y){var el=document.elementFromPoint(x,y);if(!el)return;
+  el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true,view:window,clientX:x,clientY:y}));})(${_cursorX.toInt()},${_cursorY.toInt()})''');
+          return;
+        }
         await _handleCenterDoubleTap();
       case 'back':
         // Phone / web remote Back: exit video fullscreen first, otherwise go
@@ -970,6 +985,11 @@ class _BrowserScreenState extends State<BrowserScreen>
           _urlKbKey.currentState?.hitTest(Offset(ox, oy));
           return;
         }
+        if (_showTextKeyboard) {
+          final consumed = _textKbKey.currentState?.hitTest(Offset(ox, oy)) ?? false;
+          if (consumed) return;
+          // fell through: keyboard closed itself, continue as a page click
+        }
         if (_showWebRemotePanel) {
           final panelActions = <String, VoidCallback?>{
             'start': _webRemote.running ? null : _startWebRemote,
@@ -1014,8 +1034,10 @@ class _BrowserScreenState extends State<BrowserScreen>
             'address': () => setState(() => _showUrlKeyboard = true),
             'back': _canGoBack ? _goBack : null,
             'forward': _canGoForward ? () => _webController.goForward() : null,
-            'up': _url.isNotEmpty ? () => _scrollPage(0, -(MediaQuery.sizeOf(context).height / 3).round()) : null,
-            'down': _url.isNotEmpty ? () => _scrollPage(0, (MediaQuery.sizeOf(context).height / 3).round()) : null,
+            'up': _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowUp'}) : null,
+            'down': _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowDown'}) : null,
+            'left': _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowLeft'}) : null,
+            'right': _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowRight'}) : null,
             'stop': _loading ? () => _webController.runJavaScript('window.stop()') : null,
             'reload': _url.isNotEmpty ? () => _webController.reload() : null,
             'exit': () {
@@ -1212,6 +1234,18 @@ class _BrowserScreenState extends State<BrowserScreen>
   }catch(e){}
 })($encoded)''');
         }
+      case 'keyboard_clear_field':
+        _webController.runJavaScript(r'''
+(function(){
+  function _deepActive(doc){var el=doc.activeElement;if(!el)return null;if(el.shadowRoot&&el.shadowRoot.activeElement)return _deepActive(el.shadowRoot);if(el.tagName==='IFRAME'){try{var id=el.contentDocument&&_deepActive(el.contentDocument);if(id)return id;}catch(e){}}return el;}
+  var el=_deepActive(document);if(!el)return;
+  if(el.isContentEditable){el.textContent='';el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward'}));return;}
+  if(el.tagName!=='INPUT'&&el.tagName!=='TEXTAREA')return;
+  var proto=el.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;
+  var setter=Object.getOwnPropertyDescriptor(proto,'value').set;setter.call(el,'');
+  el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'deleteContentBackward'}));
+  el.dispatchEvent(new Event('change',{bubbles:true}));
+})()''');
       case 'keyboard_backspace':
         _webController.runJavaScript('''
 (function(){
@@ -2026,8 +2060,10 @@ class _BrowserScreenState extends State<BrowserScreen>
                     onBack: _goBack,
                     onBookmark: _url.isNotEmpty ? _bookmarkCurrent : null,
                     onForward: _canGoForward ? () => _webController.goForward() : null,
-                    onScrollUp: _url.isNotEmpty ? () => _scrollPage(0, -(MediaQuery.sizeOf(context).height / 3).round()) : null,
-                    onScrollDown: _url.isNotEmpty ? () => _scrollPage(0, (MediaQuery.sizeOf(context).height / 3).round()) : null,
+                    onScrollUp: _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowUp'}) : null,
+                    onScrollDown: _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowDown'}) : null,
+                    onKeyLeft: _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowLeft'}) : null,
+                    onKeyRight: _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowRight'}) : null,
                     onStop: () => _webController.runJavaScript('window.stop()'),
                     onReload: _url.isNotEmpty ? () => _webController.reload() : null,
                     onExit: _armExitConfirm,
@@ -2068,6 +2104,22 @@ class _BrowserScreenState extends State<BrowserScreen>
                   ),
                 ),
               if (_showWebRemotePanel) _buildWebRemoteOwnerPanel(),
+              if (_showTextKeyboard && !_showUrlKeyboard)
+                UrlKeyboard(
+                  key: _textKbKey,
+                  mode: 'text',
+                  initialText: '',
+                  controller: _urlHistory,
+                  onGo: (_) {},
+                  onType: (t) => _handleCommand({'action': 'keyboard_type', 'text': t}),
+                  onBackspace: () => _handleCommand({'action': 'keyboard_backspace'}),
+                  onEnter: () {
+                    setState(() => _showTextKeyboard = false);
+                    _handleCommand({'action': 'keyboard_enter'});
+                  },
+                  onClearField: () => _handleCommand({'action': 'keyboard_clear_field'}),
+                  onClose: () => setState(() => _showTextKeyboard = false),
+                ),
               if (_showUrlKeyboard)
                 UrlKeyboard(
                   key: _urlKbKey,
@@ -2176,6 +2228,8 @@ class _HudBar extends StatelessWidget {
   final VoidCallback? onForward;
   final VoidCallback? onScrollUp;
   final VoidCallback? onScrollDown;
+  final VoidCallback? onKeyLeft;
+  final VoidCallback? onKeyRight;
   final VoidCallback? onStop;
   final VoidCallback? onReload;
   final VoidCallback? onExit;
@@ -2192,13 +2246,15 @@ class _HudBar extends StatelessWidget {
     this.onForward,
     this.onScrollUp,
     this.onScrollDown,
+    this.onKeyLeft,
+    this.onKeyRight,
     this.onStop,
     this.onReload,
     this.onExit,
   });
 
   static final Map<String, GlobalKey> toolKeys = {
-    for (final n in ['address', 'back', 'forward', 'up', 'down', 'stop', 'reload', 'exit']) n: GlobalKey(),
+    for (final n in ['address', 'back', 'forward', 'left', 'right', 'up', 'down', 'stop', 'reload', 'exit']) n: GlobalKey(),
   };
 
   Widget _tool(String name, IconData icon, VoidCallback? cb, {Color? color}) => GestureDetector(
@@ -2206,11 +2262,11 @@ class _HudBar extends StatelessWidget {
         behavior: HitTestBehavior.opaque,
         onTap: cb,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
           child: Icon(
             icon,
             color: color ?? (cb == null ? _kGreen.withValues(alpha: 0.3) : _kGreen),
-            size: 17,
+            size: 14,
             weight: 800,
             shadows: cb == null ? null : const [Shadow(color: _kGreen, blurRadius: 4)],
           ),
@@ -2269,8 +2325,10 @@ class _HudBar extends StatelessWidget {
           // One tight cluster on the right so the cursor travels a short path.
           _tool('back', Icons.arrow_back, canGoBack ? onBack : null),
           _tool('forward', Icons.arrow_forward, onForward),
-          _tool('up', Icons.arrow_upward, onScrollUp),
-          _tool('down', Icons.arrow_downward, onScrollDown),
+          _tool('left', Icons.keyboard_arrow_left, onKeyLeft),
+          _tool('right', Icons.keyboard_arrow_right, onKeyRight),
+          _tool('up', Icons.keyboard_arrow_up, onScrollUp),
+          _tool('down', Icons.keyboard_arrow_down, onScrollDown),
           _tool('stop', Icons.stop_circle, loading ? onStop : null),
           _tool('reload', Icons.refresh, onReload),
           _tool('exit', Icons.power_settings_new, onExit, color: const Color(0xFFFF6666)),
