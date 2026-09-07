@@ -20,6 +20,9 @@ class BrowserAgent {
   static const _maxToolMs = 20000;
   bool _busy = false;
   bool get busy => _busy;
+  int _generation = 0;
+  /// Cancels the in-flight run (e.g. user pressed cancel or started a new one).
+  void cancel() => _generation++;
 
   /// Trace of the last runs (kept on the glasses, readable from the web remote).
   static final List<Map<String, dynamic>> trace = [];
@@ -120,6 +123,7 @@ Rules:
       _busy = false;
       throw StateError('No Gemini API key (set it in the web remote)');
     }
+    final gen = ++_generation;
     final runId = DateTime.now().millisecondsSinceEpoch.toString();
     var lastCall = '';
     _log({'run': runId, 'command': command, 'model': model});
@@ -157,6 +161,7 @@ Rules:
         // Keep the model turn (function calls included) in the transcript.
         contents.add({'role': 'model', 'parts': parts});
 
+        if (gen != _generation) return 'Cancelled';
         final calls = parts.where((p) => p['functionCall'] != null).toList();
         if (calls.isEmpty) {
           final t = parts
@@ -194,6 +199,8 @@ Rules:
             out = {'error': 'navigate needs url'};
           } else if (signature == lastCall && name != 'read_page') {
             out = {'error': 'same call repeated with no effect; try another step or call done'};
+          } else if (gen != _generation) {
+            return 'Cancelled';
           } else {
             try {
               out = await runTool(name, args)
@@ -203,6 +210,8 @@ Rules:
             } catch (e) {
               out = {'error': e.toString()};
             }
+            // A tool that finished after a newer run started must not feed back.
+            if (gen != _generation) return 'Cancelled';
           }
           lastCall = signature;
           _log({

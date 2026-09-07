@@ -186,6 +186,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     _modeToastTimer?.cancel();
     _hwPressTimer?.cancel();
     _micStatusTimer?.cancel();
+    _agent.cancel();
     _glideTimer?.cancel();
     unawaited(_webRemote.stop());
     super.dispose();
@@ -239,7 +240,19 @@ class _BrowserScreenState extends State<BrowserScreen>
   void _initWebView() {
     // onPermissionRequest: grant in-page getUserMedia (mic) so voice search works.
     _webController = WebViewController(
-      onPermissionRequest: (request) => request.grant(),
+      onPermissionRequest: (request) {
+        // Only microphone/camera capture is granted (for voice search & ASR);
+        // deny everything else (MIDI, protected media id, geolocation prompts).
+        const audioVideo = {
+          WebViewPermissionResourceType.microphone,
+          WebViewPermissionResourceType.camera,
+        };
+        if (request.types.any(audioVideo.contains)) {
+          request.grant();
+        } else {
+          request.deny();
+        }
+      },
     )
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..addJavaScriptChannel(
@@ -848,6 +861,29 @@ class _BrowserScreenState extends State<BrowserScreen>
         final nowMs = DateTime.now().millisecondsSinceEpoch;
         if (nowMs - _hwLastPressMs < 80) return;
         _hwLastPressMs = nowMs;
+        // While the agent is listening, a single press stops recording and runs
+        // the command. This must fire exactly once and never fall through to the
+        // mouse-mode toggle below.
+        if (_agentListening) {
+          _agentListening = false;
+          unawaited(
+            _methodChannel.invokeMethod('beep', {'kind': 'stop'}).catchError((_) => null),
+          );
+          _setMicStatus('⏳ Recognising…');
+          try {
+            final text = await _asr.stopAndTranscribe();
+            if (text.trim().isEmpty) {
+              _setMicStatus("Didn't catch that", clearAfterMs: 2500);
+            } else {
+              await _runAgentCommand(text.trim());
+            }
+          } catch (e) {
+            _setMicStatus(
+                e is StateError ? e.message : 'Recognition failed',
+                clearAfterMs: 4000);
+          }
+          return;
+        }
         _hwPressCount++;
         _hwPressTimer?.cancel();
         if (_hwPressCount >= 2) {
@@ -872,12 +908,27 @@ class _BrowserScreenState extends State<BrowserScreen>
           });
         }
       case 'hw_button_long':
+        // HOLD = talk to the AI agent. Holding again while it listens cancels.
+        // (Exit lives on the HUD power icon, the web remote and the start panel.)
         _hwPressTimer?.cancel();
         _hwPressCount = 0;
-        if (_confirmExit) {
-          await _handleCommand({'action': 'exit_app'});
-        } else {
-          _armExitConfirm();
+        if (_agentListening) {
+          _agentListening = false;
+          try {
+            await _asr.stopAndTranscribe();
+          } catch (_) {}
+          _setMicStatus('Agent cancelled', clearAfterMs: 2000);
+          return;
+        }
+        try {
+          await _asr.start();
+          _agentListening = true;
+          unawaited(
+            _methodChannel.invokeMethod('beep', {'kind': 'start'}).catchError((_) => null),
+          );
+          _setMicStatus('🤖 AGENT LISTENING… press the button once to run');
+        } catch (_) {
+          _setMicStatus('Cannot open microphone', clearAfterMs: 2500);
         }
       case 'cursor_dblclick':
         // Two native taps within the double-tap window; the WebView itself
