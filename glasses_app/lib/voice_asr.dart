@@ -11,7 +11,7 @@ class VoiceAsr {
   final MethodChannel _channel;
   static const _prefKey = 'gemini_api_key';
   static const _modelKey = 'gemini_asr_model';
-  static const defaultModel = 'gemini-3.5-transcribe';
+  static const defaultModel = 'gemini-3.8-flash';
 
   static Future<String> loadModel() async =>
       (await SharedPreferences.getInstance()).getString(_modelKey) ?? defaultModel;

@@ -25,7 +25,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 
 **On the glasses**
 - All on-glasses UI is in English
-- **Voice input (🎤 on both keyboards)**: tap once → beep + “ĐANG NGHE…”, speak, tap ⏹ → text is recognised by Gemini (default **gemini-3.5-transcribe**; pick any model from the web remote after *Fetch models*) and typed into the field. Needs a Gemini API key saved from the web remote (Settings → *Gemini API key*, stored on the glasses only). The RV101 has no Google Speech, so sites’ own voice search cannot work; this replaces it
+- **Voice input (🎤 on both keyboards)**: tap once → beep + “ĐANG NGHE…”, speak, tap ⏹ → text is recognised by Gemini (default **gemini-3.8-flash** (cheapest); pick any model from the web remote after *Fetch models*) and typed into the field. Needs a Gemini API key saved from the web remote (Settings → *Gemini API key*, stored on the glasses only). The RV101 has no Google Speech, so sites’ own voice search cannot work; this replaces it
 - **Microphone for web pages** (YouTube / Google voice search works; permission asked once on first launch)
 - Page content is laid out **below** the address bar (no more fixed headers hidden under it — e.g. the YouTube search button)
 - **Wi‑Fi auto-on** when the app opens (also persists Rokid's own Wi‑Fi preference so it survives reboot — technique from [rokid-wifi-on](https://github.com/ksuzukigh/rokid-wifi-on))
@@ -55,7 +55,7 @@ While the browser is in the foreground it asks the Rokid system to disable the b
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.10.1.apk
+adb install -r releases/rokid-glass-browser-1.10.2.apk
 ```
 
 ## Use
