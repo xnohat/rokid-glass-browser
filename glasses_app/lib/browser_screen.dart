@@ -2148,20 +2148,13 @@ class _BrowserScreenState extends State<BrowserScreen>
               await _urlHistory.remove(u);
             }
             return {'ok': true};
-          // Destructive / connectivity actions require an explicit confirm flag.
-          // Without it, report back so the model asks the user first.
+          // Destructive / connectivity actions are NOT executed by the agent.
+          // A model-set confirm flag is not real user consent, so we refuse and
+          // tell the user to do it themselves in the web-remote settings.
           case 'clear_session':
-            if (args['confirm'] != true) {
-              return {'need_confirm': true, 'message': 'This deletes cookies and cache (logs you out). Ask the user to confirm, then call again with confirm=true.'};
-            }
-            await _handleCommand({'action': 'clear_session'});
-            return {'ok': true};
+            return {'refused': true, 'message': 'For safety, clearing the session (which logs you out) must be done by the user in the web remote settings, not by the agent.'};
           case 'wifi_on':
-            if (args['confirm'] != true) {
-              return {'need_confirm': true, 'message': 'Turning Wi-Fi on/off changes connectivity. Ask the user to confirm, then call again with confirm=true.'};
-            }
-            await _handleCommand({'action': 'wifi_enable'});
-            return {'ok': true};
+            return {'refused': true, 'message': 'For safety, Wi-Fi changes must be done by the user, not by the agent.'};
           default:
             return {'error': 'unknown app action $a'};
         }
@@ -2493,6 +2486,40 @@ class _BrowserScreenState extends State<BrowserScreen>
                     ),
                   ),
                 ),
+              if (_showWebRemotePanel) _buildWebRemoteOwnerPanel(),
+              if (_showTextKeyboard && !_showUrlKeyboard)
+                UrlKeyboard(
+                  key: _textKbKey,
+                  mode: 'text',
+                  initialText: '',
+                  controller: _urlHistory,
+                  onGo: (_) {},
+                  onType: (t) => _handleCommand({'action': 'keyboard_type', 'text': t}),
+                  onBackspace: () => _handleCommand({'action': 'keyboard_backspace'}),
+                  onEnter: () {
+                    setState(() => _showTextKeyboard = false);
+                    _handleCommand({'action': 'keyboard_enter'});
+                  },
+                  onClearField: () => _handleCommand({'action': 'keyboard_clear_field'}),
+                  onMic: _micPress,
+                  micActive: _micActive,
+                  micStatus: _micStatus,
+                  onClose: () => setState(() => _showTextKeyboard = false),
+                ),
+              if (_showUrlKeyboard)
+                UrlKeyboard(
+                  key: _urlKbKey,
+                  initialText: _url,
+                  controller: _urlHistory,
+                  onGo: (u) {
+                    setState(() => _showUrlKeyboard = false);
+                    _handleCommand({'action': 'navigate', 'url': u});
+                  },
+                  onMic: _micPress,
+                  micActive: _micActive,
+                  micStatus: _micStatus,
+                  onClose: () => setState(() => _showUrlKeyboard = false),
+                ),
               if (_agentPanelOpen && _agentLog.isNotEmpty)
                 Positioned(
                   right: 6,
@@ -2559,40 +2586,6 @@ class _BrowserScreenState extends State<BrowserScreen>
                       ),
                     ),
                   ),
-                ),
-              if (_showWebRemotePanel) _buildWebRemoteOwnerPanel(),
-              if (_showTextKeyboard && !_showUrlKeyboard)
-                UrlKeyboard(
-                  key: _textKbKey,
-                  mode: 'text',
-                  initialText: '',
-                  controller: _urlHistory,
-                  onGo: (_) {},
-                  onType: (t) => _handleCommand({'action': 'keyboard_type', 'text': t}),
-                  onBackspace: () => _handleCommand({'action': 'keyboard_backspace'}),
-                  onEnter: () {
-                    setState(() => _showTextKeyboard = false);
-                    _handleCommand({'action': 'keyboard_enter'});
-                  },
-                  onClearField: () => _handleCommand({'action': 'keyboard_clear_field'}),
-                  onMic: _micPress,
-                  micActive: _micActive,
-                  micStatus: _micStatus,
-                  onClose: () => setState(() => _showTextKeyboard = false),
-                ),
-              if (_showUrlKeyboard)
-                UrlKeyboard(
-                  key: _urlKbKey,
-                  initialText: _url,
-                  controller: _urlHistory,
-                  onGo: (u) {
-                    setState(() => _showUrlKeyboard = false);
-                    _handleCommand({'action': 'navigate', 'url': u});
-                  },
-                  onMic: _micPress,
-                  micActive: _micActive,
-                  micStatus: _micStatus,
-                  onClose: () => setState(() => _showUrlKeyboard = false),
                 ),
               // Cursor is rendered as a native Android View in the DecorView
               // (see updateCursor in MainActivity.kt) so it stays visible above

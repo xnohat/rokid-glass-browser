@@ -60,7 +60,7 @@ While the browser is in the foreground it asks the Rokid system to disable the b
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.15.2.apk
+adb install -r releases/rokid-glass-browser-1.16.0.apk
 ```
 
 ## Use

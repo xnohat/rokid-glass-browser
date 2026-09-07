@@ -139,7 +139,7 @@
     ]],
     ['Browser app',[
       ['Open the Web Remote panel','open the web remote'],
-      ['Start streaming','open the web remote and click Start'],
+      ['Start streaming','open the web remote'],
       ['Close a dialog / keyboard','close the dialog'],
       ['Exit the browser','exit the browser'],
       ['Transparent / wireframe mode','turn on transparent mode','turn transparent mode off'],
@@ -151,12 +151,11 @@
       ['Volume','volume up','volume down'],
       ['Clear browsing history','clear my history'],
     ]],
-    ['Needs confirmation',[
-      ['Clear session (logs you out)','clear my session'],
-      ['Wi‑Fi','turn wifi on'],
+    ['Only you can do these (agent will refuse)',[
+      ['Clearing the login session and Wi-Fi changes are done by you in Settings below, not by the agent.',''],
     ]],
   ];
-  const buildHelp=()=>{const b=byId('rr-help-body');b.innerHTML='';for(const[grp,rows]of AGENT_HELP){const h=document.createElement('h4');h.textContent=grp;b.appendChild(h);for(const r of rows){const title=r[0];for(let i=1;i<r.length;i++){const d=document.createElement('div');d.className='hex';d.innerHTML='“'+r[i]+'”'+(i===1?'<small>'+title+'</small>':'');d.addEventListener('click',()=>{byId('rr-agent-text').value=r[i];byId('rr-agentmodal').classList.add('hidden')});b.appendChild(d)}}}};
+  const buildHelp=()=>{const b=byId('rr-help-body');b.innerHTML='';for(const[grp,rows]of AGENT_HELP){const h=document.createElement('h4');h.textContent=grp;b.appendChild(h);for(const r of rows){const title=r[0];if(r.length===2&&r[1]===''){const n=document.createElement('div');n.className='hex';n.style.cursor='default';n.textContent=title;b.appendChild(n);continue;}for(let i=1;i<r.length;i++){const d=document.createElement('div');d.className='hex';d.innerHTML='“'+r[i]+'”'+(i===1?'<small>'+title+'</small>':'');d.addEventListener('click',()=>{byId('rr-agent-text').value=r[i];byId('rr-agentmodal').classList.add('hidden')});b.appendChild(d)}}}};
   buildHelp();
   byId('rr-agent-help').addEventListener('click',()=>{buildHelp();byId('rr-agentmodal').classList.remove('hidden')});
   byId('rr-help-close').addEventListener('click',()=>byId('rr-agentmodal').classList.add('hidden'));

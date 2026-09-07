@@ -109,10 +109,10 @@ Rules:
           'exit_app (close the browser on the glasses), close_overlay (dismiss any open dialog/keyboard/panel), '
           'open_web_remote, transparent_on, transparent_off, dark_on, dark_off, passthrough_toggle, theater_toggle, '
           'hud_toggle (show/hide the address bar), zoom_in, zoom_out, brighter, dimmer, volume_up, volume_down, '
-          'clear_history, clear_session (cookies+cache — DESTRUCTIVE, needs confirm), wifi_on (changes connectivity — needs confirm). For actions marked "needs confirm", first tell the user what will happen and call done; only pass confirm=true if the user explicitly asked for that destructive action.',
+          'clear_history. (Clearing the login session and changing Wi-Fi are NOT available to the agent for safety — tell the user to do those in the web remote settings.)',
       'parameters': {
         'type': 'object',
-        'properties': {'action': {'type': 'string'}, 'confirm': {'type': 'boolean', 'description': 'Only true if the user explicitly asked for this destructive action in their command.'}},
+        'properties': {'action': {'type': 'string'}},
         'required': ['action']
       }
     },
