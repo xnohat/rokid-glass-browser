@@ -20,7 +20,7 @@ const _kSoftGreen = Color(0xFF88FF88);
 const double _kHudHeight = 44;
 // Layout (CSS) viewport width presented to pages, in CSS px. 320 is the
 // glasses' native width; 400 gives phone-class layouts.
-const int _kLayoutWidth = 400;
+const int _kLayoutWidth = 360;
 // Phone touchpad → glasses cursor gain (1.0 = full pad width == full screen).
 const double _kRemotePadGain = 0.45;
 // Glasses touchpad swipe → cursor step = screen / divisor.
@@ -68,6 +68,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   // Floating console shown bottom-right while the agent runs.
   final List<String> _agentLog = [];
   bool _agentPanelOpen = false;
+  double _dim = 0.0;
   final ScrollController _agentScroll = ScrollController();
   Timer? _agentHideTimer;
   bool _micActive = false;
@@ -1426,6 +1427,7 @@ class _BrowserScreenState extends State<BrowserScreen>
       case 'set_dim':
         // Manual brightness/dim control from the phone (0.0=normal .. 0.8=dimmest).
         final v = (cmd['value'] as num?)?.toDouble() ?? 0.0;
+        _dim = v;
         _methodChannel.invokeMethod('setDim', v).catchError((_) {});
       case 'volume_up':
         _adjustMediaVolume(0.05);
@@ -2091,6 +2093,80 @@ class _BrowserScreenState extends State<BrowserScreen>
         await _handleCommand({'action': 'keyboard_enter'});
         await settle(2500);
         return {'ok': true, 'url': _url};
+      case 'app_action':
+        final a = (args['action'] ?? '').toString();
+        switch (a) {
+          case 'exit_app':
+            await _handleCommand({'action': 'exit_app'});
+            return {'ok': true, 'note': 'browser closing'};
+          case 'close_overlay':
+            setState(() {
+              _showWebRemotePanel = false;
+              _showUrlKeyboard = false;
+              _showTextKeyboard = false;
+              _confirmExit = false;
+            });
+            return {'ok': true};
+          case 'open_web_remote':
+            setState(() => _showWebRemotePanel = true);
+            return {'ok': true};
+          case 'transparent_on':
+            await _handleCommand({'action': 'set_visual_mode', 'mode': 'transparent'});
+            return {'ok': true};
+          case 'transparent_off':
+            await _handleCommand({'action': 'set_visual_mode', 'mode': 'normal'});
+            return {'ok': true};
+          case 'dark_on':
+            setState(() => _isDark = true);
+            await _applyTheme(true);
+            return {'ok': true};
+          case 'dark_off':
+            setState(() => _isDark = false);
+            await _applyTheme(false);
+            return {'ok': true};
+          case 'passthrough_toggle':
+            await _handleCommand({'action': 'toggle_passthrough'});
+            return {'ok': true};
+          case 'theater_toggle':
+            await _handleCommand({'action': 'video_theater'});
+            return {'ok': true};
+          case 'hud_toggle':
+            await _handleCommand({'action': 'toggle_hud'});
+            return {'ok': true};
+          case 'zoom_in':
+            _pageZoom = (_pageZoom + 0.1).clamp(0.5, 3.0);
+            _applyZoom();
+            return {'ok': true, 'zoom': _pageZoom};
+          case 'zoom_out':
+            _pageZoom = (_pageZoom - 0.1).clamp(0.5, 3.0);
+            _applyZoom();
+            return {'ok': true, 'zoom': _pageZoom};
+          case 'brighter':
+            await _handleCommand({'action': 'set_dim', 'value': (_dim - 0.15).clamp(0.0, 0.8)});
+            return {'ok': true};
+          case 'dimmer':
+            await _handleCommand({'action': 'set_dim', 'value': (_dim + 0.15).clamp(0.0, 0.8)});
+            return {'ok': true};
+          case 'volume_up':
+            await _handleCommand({'action': 'volume_up'});
+            return {'ok': true};
+          case 'volume_down':
+            await _handleCommand({'action': 'volume_down'});
+            return {'ok': true};
+          case 'clear_history':
+            for (final u in List<String>.from(_urlHistory.history)) {
+              await _urlHistory.remove(u);
+            }
+            return {'ok': true};
+          case 'clear_session':
+            await _handleCommand({'action': 'clear_session'});
+            return {'ok': true};
+          case 'wifi_on':
+            await _handleCommand({'action': 'wifi_enable'});
+            return {'ok': true};
+          default:
+            return {'error': 'unknown app action $a'};
+        }
       default:
         return {'error': 'unknown tool'};
     }

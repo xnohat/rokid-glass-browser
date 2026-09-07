@@ -34,7 +34,7 @@ class BrowserAgent {
 
   static const _toolNames = {
     'navigate', 'back', 'forward', 'reload', 'scroll',
-    'read_page', 'click', 'type', 'press_enter', 'done',
+    'read_page', 'click', 'type', 'press_enter', 'app_action', 'done',
   };
 
   static const _systemPrompt = '''
@@ -48,6 +48,7 @@ Rules:
 - To search a site: navigate to it, click its search box, type the query, press_enter.
 - You may go straight to a search URL when you know it (e.g. https://m.youtube.com/results?search_query=...).
 - Never ask the user questions; make a reasonable choice and continue.
+- For app-level requests (close/exit the browser, close a dialog, dark/transparent mode, zoom, brightness, volume, Wi-Fi) use app_action.
 - Finish with done(message) — a SHORT sentence in the user's language describing what you did.
 ''';
 
@@ -102,6 +103,19 @@ Rules:
       }
     },
     {'name': 'press_enter', 'description': 'Press Enter in the focused field (submits search forms)', 'parameters': {'type': 'object', 'properties': {}}},
+    {
+      'name': 'app_action',
+      'description': 'Browser-app (not page) actions. action must be one of: '
+          'exit_app (close the browser on the glasses), close_overlay (dismiss any open dialog/keyboard/panel), '
+          'open_web_remote, transparent_on, transparent_off, dark_on, dark_off, passthrough_toggle, theater_toggle, '
+          'hud_toggle (show/hide the address bar), zoom_in, zoom_out, brighter, dimmer, volume_up, volume_down, '
+          'clear_history, clear_session (cookies+cache), wifi_on.',
+      'parameters': {
+        'type': 'object',
+        'properties': {'action': {'type': 'string'}},
+        'required': ['action']
+      }
+    },
     {
       'name': 'done',
       'description': 'Finish and report to the user.',
