@@ -127,7 +127,7 @@ void main() {
 
   test('pairing expires and failed attempts are rate limited', () async {
     await start();
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 20; i++) {
       final wrong = await pair('000000', origin: server.origin);
       expect(wrong.statusCode, HttpStatus.unauthorized);
       await wrong.drain<void>();

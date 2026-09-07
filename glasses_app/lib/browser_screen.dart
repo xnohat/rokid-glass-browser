@@ -858,16 +858,17 @@ class _BrowserScreenState extends State<BrowserScreen>
         } else {
           _armExitConfirm();
         }
+      case 'cursor_dblclick':
+        // Two native taps within the double-tap window; the WebView itself
+        // synthesises the dblclick event (verified), so do not add another.
+        await _handleCommand({'action': 'cursor_click'});
+        await Future<void>.delayed(const Duration(milliseconds: 90));
+        await _handleCommand({'action': 'cursor_click'});
       case 'touchpad_back':
         // One-finger double-tap: mouse mode = double-click at the cursor;
         // scroll mode = Back.
         if (!_swipeScrollsPage) {
-          await _handleCommand({'action': 'cursor_click'});
-          await Future<void>.delayed(const Duration(milliseconds: 90));
-          await _handleCommand({'action': 'cursor_click'});
-          _webController.runJavaScript('''
-(function(x,y){var el=document.elementFromPoint(x,y);if(!el)return;
-  el.dispatchEvent(new MouseEvent('dblclick',{bubbles:true,cancelable:true,view:window,clientX:x,clientY:y}));})(${_cursorX.toInt()},${_cursorY.toInt()})''');
+          await _handleCommand({'action': 'cursor_dblclick'});
           return;
         }
         await _handleCenterDoubleTap();

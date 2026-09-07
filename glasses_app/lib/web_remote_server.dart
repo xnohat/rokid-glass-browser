@@ -207,7 +207,7 @@ class WebRemoteServer {
       remote,
       () => <DateTime>[],
     )..removeWhere((time) => now.difference(time) > const Duration(minutes: 1));
-    if (attempts.length >= 5) {
+    if (attempts.length >= 20) {
       await _reject(request, HttpStatus.tooManyRequests, 'Try again later');
       return;
     }
@@ -220,7 +220,7 @@ class WebRemoteServer {
         return all..addAll(chunk);
       });
       final decoded = jsonDecode(utf8.decode(bytes));
-      if (decoded is! Map || decoded.keys.any((key) => key != 'code')) {
+      if (decoded is! Map || decoded.keys.any((key) => key != 'code' && key != 'force')) {
         throw const FormatException('Invalid pair schema');
       }
       // Owner decision 2026-09-07: no pairing code. Knowing the LAN address
@@ -236,6 +236,14 @@ class WebRemoteServer {
       // previous controller. A phone that refreshed after being backgrounded
       // must be able to reconnect immediately instead of waiting for the old
       // session's grace period to expire.
+      // A LIVE, authenticated controller keeps its seat (prevents two tabs
+      // from stealing the session back and forth). Only a dead/grace session
+      // is replaced, which is the "backgrounded Safari tab" case.
+      final force = decoded['force'] == true;
+      if (_controller != null && _authenticated && !force) {
+        await _reject(request, HttpStatus.conflict, 'A controller is already paired');
+        return;
+      }
       if (_controller != null || _controllerReserved) {
         final old = _controller;
         _releaseController(old, hard: false);
@@ -464,6 +472,7 @@ class WebRemoteServer {
       case 'enter':
       case 'backspace':
       case 'cursor_click':
+      case 'cursor_dblclick':
       case 'cursor_drag_start':
       case 'cursor_drag_end':
         break;
