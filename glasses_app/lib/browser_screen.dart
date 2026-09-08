@@ -2273,10 +2273,11 @@ class _BrowserScreenState extends State<BrowserScreen>
   Widget _buildWebRemoteOwnerPanel() {
     final running = _webRemote.running;
     final paired = _webRemoteStatus == WebRemoteStatus.paired;
+    // No full-screen scrim: a dark scrim would darken the whole page (and video)
+    // behind the panel, which on the AR display reads as a grey haze over
+    // everything. The panel card itself stays opaque; the rest shows through.
     return Positioned.fill(
-      child: ColoredBox(
-        color: const Color(0xE6000000),
-        child: Center(
+      child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Container(
@@ -2401,7 +2402,6 @@ class _BrowserScreenState extends State<BrowserScreen>
             ),
           ),
         ),
-      ),
     );
   }
 
