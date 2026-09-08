@@ -175,6 +175,8 @@ class _BrowserScreenState extends State<BrowserScreen>
         setState(() {
           _cursorX = size.width / 2;
           _cursorY = size.height / 2;
+          // Open the Web Remote panel on launch so pairing is one step away.
+          _showWebRemotePanel = true;
         });
       }
     });
@@ -955,6 +957,17 @@ class _BrowserScreenState extends State<BrowserScreen>
         await Future<void>.delayed(const Duration(milliseconds: 90));
         await _handleCommand({'action': 'cursor_click'});
       case 'touchpad_back':
+        // If any overlay is open, a one-finger double-tap closes it first
+        // (fast dismiss without hunting for the ✕ with the cursor).
+        if (_showWebRemotePanel || _showUrlKeyboard || _showTextKeyboard) {
+          setState(() {
+            _showWebRemotePanel = false;
+            _showUrlKeyboard = false;
+            _showTextKeyboard = false;
+            _confirmExit = false;
+          });
+          return;
+        }
         // One-finger double-tap: mouse mode = double-click at the cursor;
         // scroll mode = Back.
         if (!_swipeScrollsPage) {
