@@ -28,7 +28,7 @@ class AgentSettings {
   static Future<void> load() async {
     final p = await SharedPreferences.getInstance();
     BrowserAgent.historyEnabled = p.getBool(_kHistory) ?? true;
-    speakEnabled = p.getBool(_kSpeak) ?? false;
+    speakEnabled = p.getBool(_kSpeak) ?? true;
     voice = p.getString(_kVoice) ?? defaultVoice;
     final persona = p.getString(_kPersona);
     if (persona != null && persona.trim().isNotEmpty) {
@@ -36,7 +36,7 @@ class AgentSettings {
     }
   }
 
-  static bool speakEnabled = false;
+  static bool speakEnabled = true;
   static String voice = defaultVoice;
 
   static Future<void> setHistory(bool on) async {
