@@ -295,7 +295,8 @@ class _BrowserScreenState extends State<BrowserScreen>
           }
         },
       )
-      ..setBackgroundColor(_kBlack)
+      ..setBackgroundColor(
+          _visualMode == 'normal' ? _kBlack : const Color(0x00000000))
       ..setUserAgent(
         'Mozilla/5.0 (Linux; Android 12; Pixel 6) '
         'AppleWebKit/537.36 (KHTML, like Gecko) '
@@ -709,6 +710,9 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   Future<void> _applyVisualMode() async {
     final mode = _visualMode;
+    // Make the WebView surface itself transparent (or opaque black in normal),
+    // otherwise the native surface fill glows grey on the AR waveguide.
+    _methodChannel.invokeMethod('setWebViewTransparent', mode != 'normal').catchError((_) => null);
     await _webController
         .runJavaScript('''
 (function(){
@@ -745,7 +749,7 @@ class _BrowserScreenState extends State<BrowserScreen>
         'box-shadow:none !important;'+
         'backdrop-filter:none !important;'+
       '}'+
-      'html,body{background:#000 !important;}'+  // base so unlit areas are true-black (transparent on AR)
+      'html,body{background:transparent !important;background-color:transparent !important;}'+  // NO fill so unlit pixels emit no light (true transparency on AR)
       'body,p,span,a,li,td,th,h1,h2,h3,h4,h5,h6,div,label,strong,em,small,button{'+
         'color:#EDEDED !important;'+
         'text-shadow:0 0 2px rgba(0,0,0,.9) !important;'+
@@ -2397,7 +2401,11 @@ class _BrowserScreenState extends State<BrowserScreen>
           _focusNavMove(v > 0 ? 1 : -1);
         },
         child: Scaffold(
-          backgroundColor: _kBlack,
+          // In transparent/wireframe mode the whole stack must be see-through so
+          // unlit pixels emit NO light on the AR waveguide (true transparency).
+          // Solid black still glows faintly grey, which is the "grey background"
+          // users report. In normal mode keep opaque black.
+          backgroundColor: _visualMode == 'normal' ? _kBlack : Colors.transparent,
           // Fill the ENTIRE display, including the area under the system
           // status/navigation bars (immersive). Without this the Scaffold shrinks
           // the body by the nav-bar inset, leaving an un-painted strip at the

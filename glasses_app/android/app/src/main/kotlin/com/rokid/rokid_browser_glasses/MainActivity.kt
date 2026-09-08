@@ -387,6 +387,21 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                     finishAffinity()
                 }
+                "setWebViewTransparent" -> {
+                    val on = call.arguments as? Boolean ?: false
+                    val wv = findWebView(window.decorView)
+                    if (wv != null) {
+                        wv.setBackgroundColor(if (on) 0x00000000 else 0xFF000000.toInt())
+                        // A transparent WebView must not be drawn with a hardware
+                        // layer that composites an opaque background.
+                        try { wv.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null) } catch (_: Exception) {}
+                    }
+                    // The Flutter view + window also need a transparent backdrop.
+                    try {
+                        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(if (on) 0x00000000 else 0xFF000000.toInt()))
+                    } catch (_: Exception) {}
+                    result.success(true)
+                }
                 "wifiEnable" -> {
                     ensureWifiOn()
                     result.success(true)
