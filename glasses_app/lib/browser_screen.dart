@@ -110,7 +110,9 @@ class _BrowserScreenState extends State<BrowserScreen>
   // 'transparent' = strip backgrounds/fills so the page reads as floating text
   // (great on the AR waveguide — less emitted light); 'wireframe' = transparent
   // fills + outline on structural elements. Images/video stay visible in all.
-  String _visualMode = 'normal';
+  // Transparent is the default so pages float on the AR display out of the box;
+  // a saved preference (if the user picked another mode) overrides it on load.
+  String _visualMode = 'transparent';
   Timer? _configRetryTimer;
   bool _passthrough = false;
   bool _theaterMode = false;
@@ -700,8 +702,9 @@ class _BrowserScreenState extends State<BrowserScreen>
   Future<void> _loadVisualMode() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final String saved = prefs.getString(_kVisualModePref) ?? 'normal';
-      if (saved == 'transparent' || saved == 'wireframe') {
+      // No saved pref -> keep the transparent default.
+      final String saved = prefs.getString(_kVisualModePref) ?? 'transparent';
+      if (saved == 'transparent' || saved == 'wireframe' || saved == 'normal') {
         if (mounted) setState(() => _visualMode = saved);
         // Apply now regardless of load timing: if a page is already up it takes
         // effect immediately; if not, onPageFinished re-applies. This closes the
@@ -763,7 +766,7 @@ class _BrowserScreenState extends State<BrowserScreen>
         'box-shadow:none !important;'+
         'backdrop-filter:none !important;'+
       '}'+
-      'html,body{background:transparent !important;background-color:transparent !important;}'+  // NO fill so unlit pixels emit no light (true transparency on AR)
+      'html,body,:root{background:transparent !important;background-color:transparent !important;background-image:none !important;}'+  // NO fill so unlit pixels emit no light (true transparency on AR)
       'body,p,span,a,li,td,th,h1,h2,h3,h4,h5,h6,div,label,strong,em,small,button{'+
         'color:#EDEDED !important;'+
         'text-shadow:0 0 2px rgba(0,0,0,.9) !important;'+
@@ -791,14 +794,26 @@ class _BrowserScreenState extends State<BrowserScreen>
   s.textContent=css;
   (document.body||document.head||document.documentElement).appendChild(s);
   // Keep our sheet LAST so later site stylesheets cannot out-cascade it.
+  function clearRootBg(){
+    [document.documentElement,document.body].forEach(function(el){
+      if(!el)return;
+      // Inline !important beats the site's own html{background:#000} rule.
+      el.style.setProperty('background','transparent','important');
+      el.style.setProperty('background-color','transparent','important');
+      el.style.setProperty('background-image','none','important');
+    });
+  }
+  clearRootBg();
   if(!window.__rokidVisualMO){
     window.__rokidVisualMO=new MutationObserver(function(muts){
       var el=document.getElementById(ID);
-      if(!el)return;
       var parent=document.body||document.head;
-      if(parent&&parent.lastElementChild!==el){parent.appendChild(el);}
+      if(el&&parent&&parent.lastElementChild!==el){parent.appendChild(el);}
+      clearRootBg();
     });
-    window.__rokidVisualMO.observe(document.documentElement,{childList:true,subtree:true});
+    // Watch style/class attribute changes on html/body too (SPA repaint).
+    window.__rokidVisualMO.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']});
+    if(document.body)window.__rokidVisualMO.observe(document.body,{attributes:true,attributeFilter:['style','class']});
   }
 })();''')
         .catchError((_) {});
