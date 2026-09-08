@@ -2223,8 +2223,15 @@ class _BrowserScreenState extends State<BrowserScreen>
       _agentPanelOpen = true;
       _micStatus = null; // the console replaces the single-line status
       _agentLog.add(line);
-      if (_agentLog.length > 60) _agentLog.removeRange(0, _agentLog.length - 60);
+      if (_agentLog.length > 200) {
+        _agentLog.removeRange(0, _agentLog.length - 200);
+      }
     });
+    _scrollAgentToBottom();
+  }
+
+  /// Keep the newest console line visible.
+  void _scrollAgentToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_agentScroll.hasClients) {
         _agentScroll.jumpTo(_agentScroll.position.maxScrollExtent);
@@ -2300,24 +2307,29 @@ class _BrowserScreenState extends State<BrowserScreen>
     setState(() {
       _agentPanelOpen = true;
       _micStatus = null;
-      _agentLog
-        ..clear()
-        ..add('🗣 $command');
+      // Keep this session's chat history: append, don't clear, so reopening the
+      // console shows the earlier turns. (Cleared only on app close / Clear.)
+      if (_agentLog.length > 200) _agentLog.removeRange(0, _agentLog.length - 200);
+      _agentLog.add('🗣 $command');
     });
+    _scrollAgentToBottom();
+    var spokenMs = 0;
     try {
       final msg = await _agent.run(command);
       _agentConsole('✓ $msg');
       _webRemote.publishAgent(msg);
       // Speak only the final answer (never tool/intermediate lines).
       if (msg != 'Cancelled' && !msg.startsWith('Stopped after')) {
-        unawaited(_speaker.speak(msg));
+        spokenMs = await _speaker.speak(msg);
       }
     } catch (e) {
       final m = e is StateError ? e.message : e.toString();
       _agentConsole('⚠︎ $m');
       _webRemote.publishAgent('Error: $m');
     }
-    _agentHideTimer = Timer(const Duration(seconds: 10), () {
+    // Keep the window up while it is still speaking, then linger 10s more.
+    _agentHideTimer?.cancel();
+    _agentHideTimer = Timer(Duration(milliseconds: spokenMs + 10000), () {
       if (mounted) setState(() => _agentPanelOpen = false);
     });
   }
@@ -2649,7 +2661,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                   child: IgnorePointer(
                     child: Container(
                       width: 232,
-                      constraints: const BoxConstraints(maxHeight: 150),
+                      height: 150,
                       padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
                       decoration: BoxDecoration(
                         color: const Color(0xE6000000),
@@ -2657,7 +2669,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                        mainAxisSize: MainAxisSize.max,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(children: [

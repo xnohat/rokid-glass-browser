@@ -77,13 +77,14 @@ class AgentSpeaker {
     _channel.invokeMethod('ttsStop').catchError((_) => null);
   }
 
-  /// Best-effort: never throws (a failed speak must not break the agent).
-  Future<void> speak(String text) async {
-    if (!AgentSettings.speakEnabled) return;
+  /// Best-effort: never throws. Returns the estimated playback duration in ms
+  /// (0 if nothing was spoken), so callers can wait until speech finishes.
+  Future<int> speak(String text) async {
+    if (!AgentSettings.speakEnabled) return 0;
     final clean = text.trim();
-    if (clean.isEmpty) return;
+    if (clean.isEmpty) return 0;
     final key = await VoiceAsr.loadKey();
-    if (key.isEmpty) return;
+    if (key.isEmpty) return 0;
     final gen = ++_generation;
     try {
       final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
@@ -107,7 +108,7 @@ class AgentSpeaker {
         req.write(body);
         final res = await req.close().timeout(const Duration(seconds: 45));
         final txt = await res.transform(utf8.decoder).join();
-        if (res.statusCode != 200 || gen != _generation) return;
+        if (res.statusCode != 200 || gen != _generation) return 0;
         final j = jsonDecode(txt);
         final parts =
             (j['candidates']?[0]?['content']?['parts'] as List?) ?? const [];
@@ -123,17 +124,20 @@ class AgentSpeaker {
             break;
           }
         }
-        if (b64 == null || gen != _generation) return;
+        if (b64 == null || gen != _generation) return 0;
         final pcm = base64Decode(b64);
         await _channel.invokeMethod('ttsPlay', {
           'pcm': Uint8List.fromList(pcm),
           'rate': rate,
         });
+        // PCM16 mono: duration = bytes / (2 * rate) seconds.
+        return (pcm.length / (2 * rate) * 1000).round();
       } finally {
         client.close(force: true);
       }
     } catch (_) {
       // swallow: speaking is a nice-to-have
     }
+    return 0;
   }
 }
