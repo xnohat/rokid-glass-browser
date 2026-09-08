@@ -53,6 +53,15 @@
         <div class="row"><button id="rr-asr-fetch" type="button">Fetch models list from Google</button></div>
         <div class="row"><button data-action="zoom_out">A−</button><button data-action="zoom_in">A+</button><button data-action="toggle_hud">Address bar</button><button data-action="toggle_passthrough">Blackout</button></div>
       </details>
+      <details id="rr-agent-box" style="margin-top:14px"><summary>AI Assistant</summary>
+        <label class="rowlabel"><input id="rr-agent-history" type="checkbox"> Conversation memory (remember this session)</label>
+        <div class="row"><button id="rr-agent-history-clear" type="button">Clear conversation now</button></div>
+        <label class="rowlabel"><input id="rr-agent-speak" type="checkbox"> Speak the assistant's reply</label>
+        <label>Voice<select id="rr-agent-voice"></select></label>
+        <label>Assistant persona (system prompt)<textarea id="rr-agent-persona" rows="4" placeholder="Persona…" style="width:100%;resize:vertical"></textarea></label>
+        <div class="row"><button id="rr-agent-persona-save" type="button" class="primary">Save persona</button><button id="rr-agent-persona-reset" type="button">Reset to default</button></div>
+        <div class="feedback" id="rr-agent-set-state"></div>
+      </details>
       <details id="rr-history-box" style="margin-top:14px"><summary>Browsing history</summary>
         <div class="row" style="margin:8px 0"><input id="rr-history-q" class="grow" placeholder="Tìm trong lịch sử"><button id="rr-history-clear" class="danger" type="button">Clear all</button></div>
         <div id="rr-history-list" class="hlist"></div>
@@ -94,13 +103,21 @@
     ws.onmessage=event=>onMessage(event,ws);
   };
   const onMessage=async(event,ws)=>{if(socket!==ws)return;if(typeof event.data==='string'){let value;try{value=JSON.parse(event.data)}catch(_){setFeedback('Invalid server response',true);return}
-    if(value.type==='ready'){ready=true;persist();setTimeout(()=>send('get_asr_key'),300);setConnected(true);visibility();const rect=preview.getBoundingClientRect();ws.send(JSON.stringify({type:'viewport',width:Math.round((rect.width||320)*devicePixelRatio),height:Math.round((rect.height||427)*devicePixelRatio)}));setFeedback('Paired · receiving screen')}
+    if(value.type==='ready'){ready=true;persist();setTimeout(()=>send('get_asr_key'),300);setTimeout(()=>send('get_agent_settings'),400);setConnected(true);visibility();const rect=preview.getBoundingClientRect();ws.send(JSON.stringify({type:'viewport',width:Math.round((rect.width||320)*devicePixelRatio),height:Math.round((rect.height||427)*devicePixelRatio)}));setFeedback('Paired · receiving screen')}
     else if(value.type==='bye'){ready=false;clearToken();badge.textContent='Glasses exited';setFeedback('The browser on the glasses closed')}
     else if(value.type==='frame'){pendingFrame=value}
     else if(value.type==='agent_trace'){window.__trace=value.trace;byId('rr-trace').textContent=value.trace.map(e=>[e.t?e.t.slice(11,19):'',e.command?('CMD '+e.command):(e.tool?('#'+e.step+' '+e.tool+' '+JSON.stringify(e.args||{})+' → '+JSON.stringify(e.result||'')):JSON.stringify(e))].join(' ')).join('\n')}
     else if(value.type==='agent'){byId('rr-agent-state').textContent=value.message}
     else if(value.type==='asr_model'){const sel=byId('rr-asr-model');if(value.models){sel.innerHTML='';for(const m of value.models){const o=document.createElement('option');o.value=m;o.textContent=m;sel.appendChild(o)}}if(![...sel.options].some(o=>o.value===value.model)){const o=document.createElement('option');o.value=value.model;o.textContent=value.model;sel.appendChild(o)}sel.value=value.model;if(value.models)setFeedback('Loaded '+value.models.length+' models')}
     else if(value.type==='asr_key'){byId('rr-asr-state').textContent=value.hasKey?('Key stored on glasses (…'+(value.tail||'')+')'):'No key on the glasses'}
+    else if(value.type==='agent_settings'){
+      byId('rr-agent-history').checked=!!value.history;
+      byId('rr-agent-speak').checked=!!value.speak;
+      const vs=byId('rr-agent-voice');if(!vs.dataset.filled&&value.voices){vs.innerHTML='';for(const v of value.voices){const o=document.createElement('option');o.value=v;o.textContent=v;vs.appendChild(o)}vs.dataset.filled='1'}
+      if(value.voice)vs.value=value.voice;
+      const pt=byId('rr-agent-persona');if(document.activeElement!==pt)pt.value=value.persona||'';
+      pt.dataset.default=value.defaultPersona||'';
+    }
     else if(value.type==='history'){historyItems=value.items||[];renderHistory()}
     else if(value.type==='state'){if(value.url)byId('rr-url').value=value.url;if(value.visualMode)byId('rr-mode').value=value.visualMode;byId('rr-back').disabled=!value.canGoBack;byId('rr-forward').disabled=!value.canGoForward}
     else if(value.type==='command_ok'){setFeedback('Command received by the glasses')}
@@ -164,6 +181,12 @@
   byId('rr-asr-model').addEventListener('change',e=>send('set_asr_model',{model:e.target.value}));
   byId('rr-asr-fetch').addEventListener('click',()=>{setFeedback('Đang tải models…');send('list_asr_models')});
   byId('rr-asr-clear').addEventListener('click',()=>{if(confirm('Remove the Gemini key from the glasses?'))send('clear_asr_key')});
+  byId('rr-agent-history').addEventListener('change',e=>send('set_agent_history',{on:e.target.checked}));
+  byId('rr-agent-history-clear').addEventListener('click',()=>send('clear_agent_history'));
+  byId('rr-agent-speak').addEventListener('change',e=>send('set_agent_speak',{on:e.target.checked}));
+  byId('rr-agent-voice').addEventListener('change',e=>send('set_agent_voice',{voice:e.target.value}));
+  byId('rr-agent-persona-save').addEventListener('click',()=>{send('set_agent_persona',{persona:byId('rr-agent-persona').value});setFeedback('Persona saved')});
+  byId('rr-agent-persona-reset').addEventListener('click',()=>{if(confirm('Reset the persona to default?'))send('reset_agent_persona')});
   byId('rr-dim').addEventListener('change',event=>send('set_dim',{value:Number(event.target.value)}));
   const point=(event,element)=>{const r=element.getBoundingClientRect();let left=r.left,top=r.top,width=r.width,height=r.height;if(element===preview&&frame.naturalWidth&&frame.naturalHeight){const imageRatio=frame.naturalWidth/frame.naturalHeight,boxRatio=r.width/r.height;if(imageRatio>boxRatio){height=r.width/imageRatio;top+=(r.height-height)/2}else{width=r.height*imageRatio;left+=(r.width-width)/2}}return{x:Math.max(0,Math.min(1,(event.clientX-left)/width)),y:Math.max(0,Math.min(1,(event.clientY-top)/height))}};
   preview.addEventListener('pointerdown',event=>{preview.setPointerCapture(event.pointerId);pointer={...point(event,preview),at:performance.now()}});

@@ -23,6 +23,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 - Display modes (normal / transparent / wireframe), dimming, text zoom, HUD toggle
 - **Exit browser on glasses** button
 - **Agent log** (expand under the command box): every run's steps — tool, arguments, duration, result — so prompts and tools can be tuned from real data; Copy JSON to share it
+- **AI Assistant settings** (expand): **Conversation memory** on/off (remembers the current app session so you can chat back‑and‑forth like an assistant; “Clear conversation now” to forget), **Speak the reply** on/off + a **voice** picker (the assistant reads only its final answer aloud via Gemini TTS — never the tool steps), and an editable **persona** system prompt (default: *Ani, a 20‑year‑old witty, sweet female assistant*). The persona is layered on top of the browser‑automation prompt — it never replaces it, so tool use stays reliable
 - **History** section (expand at the bottom): search, open, delete one, or clear all
 - Auto‑reconnect after reload or a short network drop; one controller at a time; revoke/stop from the glasses
 
@@ -64,6 +65,8 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 | **Hold again** while listening **or** while the agent is running · **Giữ lại** khi đang nghe **hoặc** khi agent đang chạy | Cancel the current run and **start listening again** (console clears, then LISTENING…) · Huỷ lượt hiện tại và **nghe lại từ đầu** (cửa sổ xoá rồi hiện LISTENING…) |
 | **Double‑tap** the touchpad while listening **or** running · **Chạm 2 lần** touchpad khi đang nghe **hoặc** đang chạy | Cancel the AI agent entirely · Huỷ hẳn AI agent |
 
+**Conversational assistant · Trợ lý hội thoại:** with *Conversation memory* on (default), the agent remembers the whole app session, so you can talk to it back‑and‑forth. Turn on *Speak the reply* to hear its answer (Gemini TTS voice), and edit its *persona* — all in the web remote's **AI Assistant** settings. · Khi bật *Conversation memory* (mặc định), agent nhớ cả phiên làm việc để bạn đối thoại qua lại; bật *Speak the reply* để nghe câu trả lời (giọng Gemini TTS) và sửa *persona* — tất cả trong mục **AI Assistant** của web remote.
+
 The agent console (bottom‑right) shows what you said (🗣), the model's thinking (💭), each tool it runs (⚙︎) and the result (✓). Exit the browser from the **⏻** icon on the toolbar, the web remote, or the start panel — not from the temple button (that is the agent now). · Cửa sổ agent (góc dưới phải) hiện câu bạn nói (🗣), suy nghĩ của model (💭), từng công cụ chạy (⚙︎) và kết quả (✓). Thoát trình duyệt bằng biểu tượng **⏻** trên thanh công cụ, web remote, hoặc bảng khởi động — không dùng nút thái dương nữa (giờ dành cho agent).
 
 While the browser is in the foreground it asks the Rokid system to disable the button's photo/video actions, and restores them when you leave — same mechanism as rokid‑zoom‑in‑camera. Two‑finger gestures are owned by the Rokid system (volume, AI assistant) and cannot be remapped by an app; see `docs/gesture-lab/README.md` for the full measured gesture table. · Khi trình duyệt đang mở, app yêu cầu hệ thống Rokid tắt chức năng chụp ảnh/quay phim của nút và khôi phục khi thoát. Cử chỉ 2 ngón do hệ thống Rokid chiếm (âm lượng, trợ lý AI) nên app không map lại được.
@@ -73,7 +76,7 @@ While the browser is in the foreground it asks the Rokid system to disable the b
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.20.0.apk
+adb install -r releases/rokid-glass-browser-1.21.0.apk
 ```
 
 ## Use

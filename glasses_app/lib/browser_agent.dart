@@ -24,6 +24,20 @@ class BrowserAgent {
   /// Cancels the in-flight run (e.g. user pressed cancel or started a new one).
   void cancel() => _generation++;
 
+  /// Conversation memory across runs within one app session (user command +
+  /// the agent's spoken reply only — NOT the intermediate tool calls, to keep
+  /// context lean). Toggled by [historyEnabled]; cleared when the app closes.
+  static final List<Map<String, dynamic>> conversation = [];
+  static bool historyEnabled = true;
+  static void clearConversation() => conversation.clear();
+
+  /// Optional persona prepended to the (unchanged) browser-control prompt.
+  static String persona = defaultPersona;
+  static const defaultPersona =
+      'You are Ani, a 20-year-old female AI assistant — smart, witty and sweet. '
+      'You help the user browse and get things done on their smart glasses. '
+      'Keep spoken replies short, warm and natural.';
+
   /// Trace of the last runs (kept on the glasses, readable from the web remote).
   static final List<Map<String, dynamic>> trace = [];
   static const _maxTraceRuns = 20;
@@ -141,11 +155,23 @@ Rules:
     final runId = DateTime.now().millisecondsSinceEpoch.toString();
     var lastCall = '';
     _log({'run': runId, 'command': command, 'model': model});
+    // Persona is prepended; the browser-control prompt is unchanged below it.
+    final preamble = persona.trim().isEmpty
+        ? _systemPrompt
+        : '${persona.trim()}\n\n$_systemPrompt';
     final contents = <Map<String, dynamic>>[
       {
         'role': 'user',
         'parts': [
-          {'text': '$_systemPrompt\n\nUser command: $command'}
+          {'text': preamble}
+        ]
+      },
+      // Prior turns of this session (spoken replies only) for continuity.
+      if (historyEnabled) ...conversation,
+      {
+        'role': 'user',
+        'parts': [
+          {'text': 'User command: $command'}
         ]
       }
     ];
@@ -186,7 +212,7 @@ Rules:
           final t = parts
               .map((p) => (p['text'] ?? '').toString())
               .firstWhere((t) => t.trim().isNotEmpty, orElse: () => '');
-          return t.isEmpty ? 'Done' : t.trim();
+          return _remember(command, t.isEmpty ? 'Done' : t.trim());
         }
 
         final responses = <Map<String, dynamic>>[];
@@ -197,7 +223,7 @@ Rules:
           if (name == 'done') {
             final msg = (args['message'] ?? 'Done').toString();
             _log({'run': runId, 'step': step, 'tool': 'done', 'result': msg});
-            return msg;
+            return _remember(command, msg);
           }
           onStatus('⚙︎ $name${args.isEmpty ? '' : ' ${_short(args)}'}');
           Map<String, dynamic> out;
@@ -252,6 +278,20 @@ Rules:
       client.close(force: true);
       _busy = false;
     }
+  }
+
+  /// Record a completed exchange (user command + spoken reply) for session
+  /// continuity, then return the reply unchanged. Only real answers are kept.
+  static String _remember(String command, String reply) {
+    if (historyEnabled) {
+      conversation.add({'role': 'user', 'parts': [{'text': command}]});
+      conversation.add({'role': 'model', 'parts': [{'text': reply}]});
+      // Keep memory bounded (last ~12 turns).
+      if (conversation.length > 24) {
+        conversation.removeRange(0, conversation.length - 24);
+      }
+    }
+    return reply;
   }
 
   static Map<String, dynamic> _clip(Map<String, dynamic> out) {

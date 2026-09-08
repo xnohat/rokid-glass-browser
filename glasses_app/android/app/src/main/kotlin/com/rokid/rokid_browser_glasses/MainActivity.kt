@@ -66,6 +66,7 @@ class MainActivity : FlutterActivity() {
     private var buttonReceiverRegistered = false
     @Volatile private var asrStop = false
     private var asrThread: Thread? = null
+    @Volatile private var ttsTrack: android.media.AudioTrack? = null
     private var asrFile: java.io.File? = null
 
     private fun setRokidButtonFunctions(shortPress: String, longPress: String) {
@@ -505,6 +506,37 @@ class MainActivity : FlutterActivity() {
                             at.write(pcm, 0, pcm.size); at.play(); Thread.sleep(400); at.release()
                         } catch (_: Exception) {}
                     }.start()
+                    result.success(true)
+                }
+                "ttsPlay" -> {
+                    // Play a PCM16 clip (Gemini TTS) through a streaming AudioTrack.
+                    val args = call.arguments as? Map<*, *>
+                    val pcm = args?.get("pcm") as? ByteArray
+                    val rate = (args?.get("rate") as? Int) ?: 24000
+                    if (pcm == null) { result.success(false); return@setMethodCallHandler }
+                    ttsTrack?.let { try { it.stop(); it.release() } catch (_: Exception) {} }
+                    Thread {
+                        try {
+                            val at = android.media.AudioTrack.Builder()
+                                .setAudioAttributes(android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_MEDIA).setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH).build())
+                                .setAudioFormat(android.media.AudioFormat.Builder().setEncoding(android.media.AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(android.media.AudioFormat.CHANNEL_OUT_MONO).build())
+                                .setBufferSizeInBytes(maxOf(pcm.size, 8192)).setTransferMode(android.media.AudioTrack.MODE_STREAM).build()
+                            ttsTrack = at
+                            at.play()
+                            var off = 0
+                            while (off < pcm.size && ttsTrack === at) {
+                                val n = at.write(pcm, off, minOf(4096, pcm.size - off))
+                                if (n <= 0) break
+                                off += n
+                            }
+                            if (ttsTrack === at) { at.stop(); at.release(); if (ttsTrack === at) ttsTrack = null }
+                        } catch (_: Exception) {}
+                    }.start()
+                    result.success(true)
+                }
+                "ttsStop" -> {
+                    ttsTrack?.let { try { it.pause(); it.flush(); it.release() } catch (_: Exception) {} }
+                    ttsTrack = null
                     result.success(true)
                 }
                 "asrStart" -> {

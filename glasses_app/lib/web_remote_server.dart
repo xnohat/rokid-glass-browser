@@ -4,6 +4,9 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'browser_agent.dart';
+import 'agent_settings.dart';
+
 typedef RemoteCommandHandler =
     FutureOr<void> Function(Map<String, dynamic> command);
 typedef RemoteCapture =
@@ -467,7 +470,20 @@ class WebRemoteServer {
       case 'history_list':
       case 'history_clear':
       case 'debug_probe':
+      case 'get_agent_settings':
+      case 'reset_agent_persona':
+      case 'clear_agent_history':
         break;
+      case 'set_agent_history':
+      case 'set_agent_speak':
+        allow('on');
+        if (value['on'] is! bool) throw const FormatException('Invalid flag');
+      case 'set_agent_voice':
+        allow('voice');
+        if (value['voice'] is! String || (value['voice'] as String).length > 40) throw const FormatException('Invalid voice');
+      case 'set_agent_persona':
+        allow('persona');
+        if (value['persona'] is! String || (value['persona'] as String).length > 1200) throw const FormatException('Invalid persona');
       case 'agent_trace':
         break;
       case 'agent_run':
@@ -671,6 +687,19 @@ class WebRemoteServer {
 
   void publishAsrModel(String model, List<String>? models) {
     if (_authenticated) _send({'type': 'asr_model', 'model': model, if (models != null) 'models': models});
+  }
+
+  void publishAgentSettings() {
+    if (!_authenticated) return;
+    _send({
+      'type': 'agent_settings',
+      'history': BrowserAgent.historyEnabled,
+      'speak': AgentSettings.speakEnabled,
+      'voice': AgentSettings.voice,
+      'voices': AgentSettings.voices,
+      'persona': AgentSettings.persona,
+      'defaultPersona': BrowserAgent.defaultPersona,
+    });
   }
 
   void publishAsrKeyState(String key) {

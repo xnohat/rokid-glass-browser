@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'url_keyboard.dart';
 import 'voice_asr.dart';
 import 'browser_agent.dart';
+import 'agent_settings.dart';
 import 'web_remote_server.dart';
 
 const _kGreen = Color(0xFF00FF00);
@@ -55,6 +56,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   bool _showUrlKeyboard = false;
   bool _showTextKeyboard = false;
   late final VoiceAsr _asr = VoiceAsr(_methodChannel);
+  late final AgentSpeaker _speaker = AgentSpeaker(_methodChannel);
   late final BrowserAgent _agent = BrowserAgent(
     runTool: _runAgentTool,
     onStatus: _agentConsole,
@@ -168,6 +170,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     );
     _loadVisualMode();
     _urlHistory.load();
+    AgentSettings.load();
     _initWebView();
     _setupEventStream();
     HardwareKeyboard.instance.addHandler(_onHardwareKey);
@@ -1495,6 +1498,26 @@ class _BrowserScreenState extends State<BrowserScreen>
         if (key.isEmpty) throw StateError('No Gemini API key saved');
         final models = await VoiceAsr.listModels(key);
         _webRemote.publishAsrModel(await VoiceAsr.loadModel(), models);
+      case 'get_agent_settings':
+        _webRemote.publishAgentSettings();
+      case 'set_agent_history':
+        await AgentSettings.setHistory(cmd['on'] == true);
+        _webRemote.publishAgentSettings();
+      case 'set_agent_speak':
+        await AgentSettings.setSpeak(cmd['on'] == true);
+        _webRemote.publishAgentSettings();
+      case 'set_agent_voice':
+        await AgentSettings.setVoice((cmd['voice'] as String?) ?? '');
+        _webRemote.publishAgentSettings();
+      case 'set_agent_persona':
+        await AgentSettings.setPersona((cmd['persona'] as String?) ?? '');
+        _webRemote.publishAgentSettings();
+      case 'reset_agent_persona':
+        await AgentSettings.setPersona('');
+        _webRemote.publishAgentSettings();
+      case 'clear_agent_history':
+        BrowserAgent.clearConversation();
+        _webRemote.publishAgentSettings();
       case 'history_list':
         _webRemote.publishHistory(_urlHistory.history);
       case 'history_remove':
@@ -2250,6 +2273,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   Future<void> _cancelAgent() async {
     final wasActive = _agentListening || _agentStarting || _agent.busy;
     _agent.cancel();
+    _speaker.stop();
     if (_agentListening || _agentStarting) {
       _agentStarting = false;
       _agentListening = false;
@@ -2284,6 +2308,10 @@ class _BrowserScreenState extends State<BrowserScreen>
       final msg = await _agent.run(command);
       _agentConsole('✓ $msg');
       _webRemote.publishAgent(msg);
+      // Speak only the final answer (never tool/intermediate lines).
+      if (msg != 'Cancelled' && !msg.startsWith('Stopped after')) {
+        unawaited(_speaker.speak(msg));
+      }
     } catch (e) {
       final m = e is StateError ? e.message : e.toString();
       _agentConsole('⚠︎ $m');
