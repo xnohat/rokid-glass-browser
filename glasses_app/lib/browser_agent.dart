@@ -62,6 +62,7 @@ Rules:
 - To search a site: navigate to it, click its search box, type the query, press_enter.
 - You may go straight to a search URL when you know it (e.g. https://m.youtube.com/results?search_query=...).
 - Never ask the user questions; make a reasonable choice and continue.
+- Always answer in the SAME language the user spoke (Vietnamese command → Vietnamese reply). The reply may be read aloud, so keep it short and natural.
 - For app-level requests (close/exit the browser, close a dialog, dark/transparent mode, zoom, brightness, volume, Wi-Fi) use app_action.
 - Finish with done(message) — a SHORT sentence in the user's language describing what you did.
 ''';
