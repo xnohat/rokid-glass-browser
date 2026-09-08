@@ -67,6 +67,12 @@ class _BrowserScreenState extends State<BrowserScreen>
   // Floating console shown bottom-right while the agent runs.
   final List<String> _agentLog = [];
   bool _agentPanelOpen = false;
+  // Live one-line status (LISTENING / Recognising) shown separately from the
+  // scrolling chat history; null when there is no transient status.
+  String? _agentStatus;
+  // Bumped on every cancel / new listen / new run so a stale async completion
+  // (e.g. an old speak() finishing) can't hide or mutate a newer console.
+  int _agentEpoch = 0;
   double _dim = 0.0;
   final ScrollController _agentScroll = ScrollController();
   Timer? _agentHideTimer;
@@ -899,9 +905,10 @@ class _BrowserScreenState extends State<BrowserScreen>
           unawaited(
             _methodChannel.invokeMethod('beep', {'kind': 'stop'}).catchError((_) => null),
           );
-          _agentConsole('⏳ Recognising…');
+          setState(() => _agentStatus = '⏳ Recognising…');
           try {
             final text = await _asr.stopAndTranscribe();
+            setState(() => _agentStatus = null);
             if (text.trim().isEmpty) {
               _agentConsole("⚠︎ Didn't catch that");
               _agentHideTimer?.cancel();
@@ -911,6 +918,7 @@ class _BrowserScreenState extends State<BrowserScreen>
               await _runAgentCommand(text.trim());
             }
           } catch (e) {
+            setState(() => _agentStatus = null);
             _agentConsole('⚠︎ ${e is StateError ? e.message : 'Recognition failed'}');
             _agentHideTimer?.cancel();
             _agentHideTimer = Timer(const Duration(seconds: 4),
@@ -1517,6 +1525,13 @@ class _BrowserScreenState extends State<BrowserScreen>
         _webRemote.publishAgentSettings();
       case 'clear_agent_history':
         BrowserAgent.clearConversation();
+        // Also clear the visible transcript + status on the glasses.
+        if (mounted) {
+          setState(() {
+            _agentLog.clear();
+            _agentStatus = null;
+          });
+        }
         _webRemote.publishAgentSettings();
       case 'history_list':
         _webRemote.publishHistory(_urlHistory.history);
@@ -2244,15 +2259,15 @@ class _BrowserScreenState extends State<BrowserScreen>
   Future<void> _startAgentListening() async {
     if (_agentStarting || _agentListening) return;
     // A new command supersedes any run in progress.
+    ++_agentEpoch;
     _agent.cancel();
+    _speaker.stop();
     _agentStarting = true;
     _agentHideTimer?.cancel();
     setState(() {
       _agentPanelOpen = true;
-      _micStatus = null;
-      _agentLog
-        ..clear()
-        ..add('🎤 LISTENING…  (hold again = restart · double-tap = cancel)');
+      // LISTENING is a live STATUS line, not chat history — keep prior turns.
+      _agentStatus = '🎤 LISTENING…  (hold again = restart · double-tap = cancel)';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_agentScroll.hasClients) {
@@ -2278,9 +2293,17 @@ class _BrowserScreenState extends State<BrowserScreen>
   /// Cancel everything the agent is doing: stop listening (discard audio) and
   /// abort any running command. Clears the console.
   Future<void> _cancelAgent() async {
-    final wasActive = _agentListening || _agentStarting || _agent.busy;
+    // Active also covers: speaking the reply, or the panel lingering after a
+    // run (the 10s grace) — a double-tap there must cancel and close at once.
+    final wasActive = _agentListening ||
+        _agentStarting ||
+        _agent.busy ||
+        _agentStatus != null ||
+        _agentPanelOpen;
+    ++_agentEpoch; // invalidate any pending run/speak completion
     _agent.cancel();
     _speaker.stop();
+    _agentHideTimer?.cancel();
     if (_agentListening || _agentStarting) {
       _agentStarting = false;
       _agentListening = false;
@@ -2290,23 +2313,22 @@ class _BrowserScreenState extends State<BrowserScreen>
     if (wasActive) {
       unawaited(_methodChannel
           .invokeMethod('beep', {'kind': 'stop'}).catchError((_) => null));
+      // Hide immediately; do not linger.
       setState(() {
-        _agentLog
-          ..clear()
-          ..add('✕ Cancelled');
+        _agentStatus = null;
+        _agentPanelOpen = false;
       });
-      _agentHideTimer?.cancel();
-      _agentHideTimer = Timer(const Duration(milliseconds: 1500),
-          () => mounted ? setState(() => _agentPanelOpen = false) : null);
     }
   }
 
   Future<void> _runAgentCommand(String command) async {
     if (command.trim().isEmpty) return;
+    final epoch = ++_agentEpoch;
     _agentHideTimer?.cancel();
     setState(() {
       _agentPanelOpen = true;
       _micStatus = null;
+      _agentStatus = null; // recognition finished; back to history view
       // Keep this session's chat history: append, don't clear, so reopening the
       // console shows the earlier turns. (Cleared only on app close / Clear.)
       if (_agentLog.length > 200) _agentLog.removeRange(0, _agentLog.length - 200);
@@ -2327,10 +2349,12 @@ class _BrowserScreenState extends State<BrowserScreen>
       _agentConsole('⚠︎ $m');
       _webRemote.publishAgent('Error: $m');
     }
+    // A newer run/cancel superseded us — don't touch the console or its timer.
+    if (epoch != _agentEpoch) return;
     // Keep the window up while it is still speaking, then linger 10s more.
     _agentHideTimer?.cancel();
     _agentHideTimer = Timer(Duration(milliseconds: spokenMs + 10000), () {
-      if (mounted) setState(() => _agentPanelOpen = false);
+      if (mounted && epoch == _agentEpoch) setState(() => _agentPanelOpen = false);
     });
   }
 
@@ -2654,7 +2678,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                   micStatus: _micStatus,
                   onClose: () => setState(() => _showUrlKeyboard = false),
                 ),
-              if (_agentPanelOpen && _agentLog.isNotEmpty)
+              if (_agentPanelOpen && (_agentLog.isNotEmpty || _agentStatus != null))
                 Positioned(
                   right: 6,
                   bottom: 6,
@@ -2691,7 +2715,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                             child: ListView.builder(
                               controller: _agentScroll,
                               padding: EdgeInsets.zero,
-                              itemCount: _agentLog.length,
+                              itemCount: _agentLog.length, // history only
                               itemBuilder: (_, i) {
                                 final line = _agentLog[i];
                                 final dim = line.startsWith('⚙︎') ||
@@ -2716,6 +2740,19 @@ class _BrowserScreenState extends State<BrowserScreen>
                               },
                             ),
                           ),
+                          if (_agentStatus != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Text(
+                                _agentStatus!,
+                                style: const TextStyle(
+                                  color: _kGreen,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  height: 1.15,
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
