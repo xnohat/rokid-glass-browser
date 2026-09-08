@@ -766,7 +766,7 @@ class _BrowserScreenState extends State<BrowserScreen>
         'box-shadow:none !important;'+
         'backdrop-filter:none !important;'+
       '}'+
-      'html,body,:root{background:transparent !important;background-color:transparent !important;background-image:none !important;}'+  // NO fill so unlit pixels emit no light (true transparency on AR)
+      'html,body{background:transparent !important;background-color:transparent !important;}'+  // NO fill so unlit pixels emit no light (true transparency on AR)
       'body,p,span,a,li,td,th,h1,h2,h3,h4,h5,h6,div,label,strong,em,small,button{'+
         'color:#EDEDED !important;'+
         'text-shadow:0 0 2px rgba(0,0,0,.9) !important;'+
@@ -794,26 +794,14 @@ class _BrowserScreenState extends State<BrowserScreen>
   s.textContent=css;
   (document.body||document.head||document.documentElement).appendChild(s);
   // Keep our sheet LAST so later site stylesheets cannot out-cascade it.
-  function clearRootBg(){
-    [document.documentElement,document.body].forEach(function(el){
-      if(!el)return;
-      // Inline !important beats the site's own html{background:#000} rule.
-      el.style.setProperty('background','transparent','important');
-      el.style.setProperty('background-color','transparent','important');
-      el.style.setProperty('background-image','none','important');
-    });
-  }
-  clearRootBg();
   if(!window.__rokidVisualMO){
     window.__rokidVisualMO=new MutationObserver(function(muts){
       var el=document.getElementById(ID);
+      if(!el)return;
       var parent=document.body||document.head;
-      if(el&&parent&&parent.lastElementChild!==el){parent.appendChild(el);}
-      clearRootBg();
+      if(parent&&parent.lastElementChild!==el){parent.appendChild(el);}
     });
-    // Watch style/class attribute changes on html/body too (SPA repaint).
-    window.__rokidVisualMO.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class']});
-    if(document.body)window.__rokidVisualMO.observe(document.body,{attributes:true,attributeFilter:['style','class']});
+    window.__rokidVisualMO.observe(document.documentElement,{childList:true,subtree:true});
   }
 })();''')
         .catchError((_) {});
