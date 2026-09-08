@@ -221,6 +221,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     });
   }
 
+  int _autoStartRetries = 0;
   Future<void> _startWebRemote() async {
     if (_webRemote.running) return;
     setState(() => _webRemoteError = null);
@@ -229,11 +230,20 @@ class _BrowserScreenState extends State<BrowserScreen>
         'assets/web_remote.html',
       );
       await _webRemote.start();
+      _autoStartRetries = 0;
       if (mounted) setState(() {});
     } catch (error) {
       await _webRemote.stop();
       if (mounted) {
         setState(() => _webRemoteError = error.toString());
+      }
+      // Wi-Fi may not have an IP yet right after launch. Retry a few times so
+      // the address comes up on its own once the network is ready.
+      if (_autoStartRetries < 10 && mounted) {
+        _autoStartRetries++;
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted && !_webRemote.running) _startWebRemote();
+        });
       }
     }
   }

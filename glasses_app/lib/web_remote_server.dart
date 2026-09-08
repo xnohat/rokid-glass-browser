@@ -101,7 +101,22 @@ class WebRemoteServer {
     return candidates.first.address;
   }
 
+  Future<void>? _starting;
   Future<void> start() async {
+    if (running) return;
+    // Serialize concurrent starts (auto-start on launch + a Start tap can race
+    // across the awaits below and bind twice). All callers await one attempt.
+    if (_starting != null) return _starting;
+    final done = _start();
+    _starting = done;
+    try {
+      await done;
+    } finally {
+      _starting = null;
+    }
+  }
+
+  Future<void> _start() async {
     if (running) return;
     final bindAddress = _requestedAddress ?? await findPrivateIPv4();
     if (bindAddress == null ||
