@@ -144,8 +144,8 @@ Rules:
     },
     {
       'name': 'watch_video',
-      'description': 'Understand the video that is playing: samples a few frames and its audio. '
-          'Use to summarise or answer about a video. Optional question; optional seconds (3-20, default 8).',
+      'description': 'Understand the video that is playing. On YouTube it uses the full video (visuals + audio); '
+          'on other sites it uses sampled frames only (no audio). Optional question; optional seconds (3-20, default 8).',
       'parameters': {
         'type': 'object',
         'properties': {
@@ -156,7 +156,7 @@ Rules:
     },
     {
       'name': 'listen_audio',
-      'description': 'Listen to the audio and transcribe/describe it. Optional question; optional seconds (3-30, default 8).',
+      'description': 'Record the glasses microphone (ambient/room sound) and transcribe/describe it — NOT the page playback audio. Optional question; optional seconds (3-30, default 8).',
       'parameters': {
         'type': 'object',
         'properties': {

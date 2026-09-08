@@ -67,9 +67,10 @@ class AgentVision {
         },
       ]);
     }
+    // Fallback for non-YouTube video: sample a few frames only. We deliberately
+    // do NOT record the microphone here — the mic captures the room, not the
+    // page's playback audio, so calling it "the video's audio" would be wrong.
     final clamped = seconds.clamp(3, 20);
-    // Start audio capture in parallel with frame sampling.
-    final audioFuture = _recordAudio(clamped * 1000);
     final frames = <Uint8List>[];
     final frameCount = clamped <= 6 ? 3 : (clamped <= 12 ? 4 : 6);
     final gap = (clamped * 1000 / frameCount).round();
@@ -80,34 +81,23 @@ class AgentVision {
         await Future<void>.delayed(Duration(milliseconds: gap));
       }
     }
-    final wavPath = await audioFuture;
     if (frames.isEmpty) throw StateError('Could not capture the video');
 
     final parts = <Map<String, dynamic>>[
       {
         'text': question.trim().isEmpty
-            ? 'These are frames sampled over ~$clamped seconds of a video that '
-                'is playing, with its audio attached. Summarise what is '
-                'happening (visuals + what is said/heard) in a few sentences. '
+            ? 'These are $frameCount frames sampled over ~$clamped seconds of a '
+                'video playing on screen (no audio track available here). '
+                'Describe what is happening visually in a few sentences. '
                 "Answer in the user's language."
-            : question.trim(),
+            : '${question.trim()} '
+                '(Only sampled video frames are provided, no audio.)',
       },
     ];
     for (final f in frames) {
       parts.add({
         'inline_data': {'mime_type': 'image/jpeg', 'data': base64Encode(f)}
       });
-    }
-    if (wavPath != null) {
-      final bytes = await File(wavPath).readAsBytes();
-      if (bytes.length > 4000) {
-        parts.add({
-          'inline_data': {
-            'mime_type': 'audio/wav',
-            'data': base64Encode(bytes),
-          }
-        });
-      }
     }
     return _generate(key, parts);
   }
@@ -126,9 +116,11 @@ class AgentVision {
     return _generate(key, [
       {
         'text': question.trim().isEmpty
-            ? 'Listen to this audio and describe/transcribe what is heard '
-                "concisely. Answer in the user's language."
-            : question.trim(),
+            ? 'This is audio recorded from the glasses microphone (ambient / '
+                'room sound). Describe or transcribe what is heard concisely. '
+                "Answer in the user's language."
+            : '${question.trim()} '
+                '(Audio is from the microphone / ambient sound.)',
       },
       {
         'inline_data': {'mime_type': 'audio/wav', 'data': base64Encode(bytes)}
@@ -155,11 +147,19 @@ class AgentVision {
     final u = Uri.tryParse(url);
     if (u == null) return null;
     final host = u.host.toLowerCase();
-    if (host.contains('youtu.be')) {
+    const ytHosts = {
+      'youtu.be',
+      'youtube.com',
+      'www.youtube.com',
+      'm.youtube.com',
+      'music.youtube.com',
+    };
+    if (!ytHosts.contains(host)) return null;
+    if (host == 'youtu.be') {
       final id = u.pathSegments.isNotEmpty ? u.pathSegments.first : '';
       return id.isEmpty ? null : 'https://www.youtube.com/watch?v=$id';
     }
-    if (host.contains('youtube.com')) {
+    {
       final id = u.queryParameters['v'];
       if (id != null && id.isNotEmpty) {
         return 'https://www.youtube.com/watch?v=$id';
