@@ -28,7 +28,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 
 **On the glasses**
 - **Floating agent console** (bottom-right, shows while the agent runs): what you said (🗣), the model's thinking (💭), each tool/command it runs (⚙︎) and the final result (✓), auto-scrolling to the newest line
-- **AI agent (hold the temple button)**: hold → beep + “AGENT LISTENING”, say what you want, press the button once → the command is transcribed and an agent carries it out with browser tools (navigate / read_page / click / type / press_enter / scroll / back / forward / reload). Works for one-shot commands (“refresh”, “scroll down a bit”) and multi-step ones (“open YouTube and find videos about palantir ontology”). Same agent can be driven from the web remote's command box
+- **AI agent (hold the temple button)**: hold → beep + the console shows **LISTENING**, say what you want, press the button once → the command is transcribed and an agent carries it out with browser + app tools (navigate / read_page / click / type / press_enter / scroll / back / forward / reload / app_action). **Hold again** (while listening or running) cancels and re‑listens; **double‑tap** the touchpad cancels the agent. Works for one‑shot commands (“refresh”, “scroll down a bit”) and multi‑step ones (“open YouTube and find videos about palantir ontology”). Same agent can be driven from the web remote's command box
 - All on-glasses UI is in English
 - **Voice input (🎤 on both keyboards)**: tap once → beep + “ĐANG NGHE…”, speak, tap ⏹ → text is recognised by Gemini (default **gemini-3.8-flash** (cheapest); pick any model from the web remote after *Fetch models*) and typed into the field. Needs a Gemini API key saved from the web remote (Settings → *Gemini API key*, stored on the glasses only). The RV101 has no Google Speech, so sites’ own voice search cannot work; this replaces it
 - **Microphone for web pages** (YouTube / Google voice search works; permission asked once on first launch)
@@ -37,30 +37,43 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 - **URL keyboard** (click the address bar): QWERTY + digits + `: / ? . # % @`, `http://` `https://` `www.` `.com`, ✕ clear, GO — big keys for the 2‑axis cursor. Autocomplete from your history and popular services (root domains first, deep paths after), ▲▼ to pick, ✕ to forget an entry
 - **Text keyboard**: click any input on a page and a compact keyboard slides up (letters, digits, symbols, ⇧, ␣, ⌫, **✕ Xóa ô** clears the field, ENTER submits). Clicking the page hides it, like a phone
 - **Mouse mode double-tap** on the touchpad = double-click at the cursor
-- Toolbar next to the address bar: ◀ ▶ history, ‹ › ˄ ˅ send arrow keys to the page, ■ stop, ↻ reload, ⏻ exit — all clickable with the cursor: ◀ ▶ ▲ ▼ ■ ↻ ⏻ — click them with the cursor
+- Toolbar next to the address bar (click with the cursor): ◀ ▶ Back/Forward, ‹ › ˄ ˅ arrow keys to the page, ■ stop, ↻ reload, ⏻ exit
 - Two modes, toggled with the temple button: **MOUSE** (swipe moves the cursor, tap clicks) and **SCROLL** (swipe scrolls / jumps between elements, tap activates)
 - Smooth cursor glide with acceleration on repeated swipes; cursor stays visible in mouse mode
 - Element‑jump starts from the first element currently on screen, not the top of the page
 
-## Controls on the glasses
+## Controls on the glasses / Điều khiển trên kính
 
-| Input | Mouse mode | Scroll mode |
+**Touchpad & temple button** — EN / VI
+
+| Input · Thao tác | Mouse mode · Chế độ chuột | Scroll mode · Chế độ cuộn |
 |---|---|---|
-| Swipe forward / back on touchpad | Move cursor (axis set by button) | Scroll page ⅓ screen / next‑prev element |
-| Tap 1 finger | Click at cursor | Activate focused element |
-| Double‑tap 1 finger | ignored | Back |
-| Temple button ×1 | Flip cursor axis ↔ / ↕ | (shows current mode) |
-| Temple button ×2 | Switch MOUSE ↔ SCROLL (pill shows the mode) | same |
-| Temple button hold ~1 s | Exit browser (second hold or ⏻ confirms) | same |
+| Swipe forward / back · Vuốt tới / lui | Move cursor (axis set by button) · Di chuột (trục do nút chọn) | Scroll ⅓ screen / jump element · Cuộn ⅓ màn hình / nhảy phần tử |
+| Tap 1 finger · Chạm 1 ngón | Click at cursor · Bấm tại con trỏ | Activate focused element · Kích hoạt phần tử |
+| Double‑tap 1 finger · Chạm 2 lần 1 ngón | Double‑click — **or cancel the AI agent if it is listening / running** · Nhấp đúp — **hoặc huỷ AI agent nếu đang nghe / đang chạy** | Back · Quay lại |
+| Temple button ×1 · Nút thái dương ×1 | Flip cursor axis ↔ / ↕ · Đổi trục chuột ↔ / ↕ | (shows current mode · hiện chế độ) |
+| Temple button ×2 · Nút ×2 | Switch MOUSE ↔ SCROLL · Đổi CHUỘT ↔ CUỘN | same · như trái |
+| Temple button hold · Giữ nút | **AI agent: listen** (see below) · **AI agent: lắng nghe** (xem dưới) | same · như trái |
 
-While the browser is in the foreground it asks the Rokid system to disable the button's photo/video actions, and restores them when you leave — same mechanism as rokid‑zoom‑in‑camera. Two‑finger gestures and one‑finger hold are owned by the Rokid system (volume, AI assistant) and cannot be remapped by an app; see `docs/gesture-lab/README.md` for the full measured gesture table.
+**AI agent — hold‑to‑talk** · **AI agent — giữ để nói**
+
+| Action · Hành động | Result · Kết quả |
+|---|---|
+| **Hold** the temple button · **Giữ** nút thái dương | Beep + the agent console pops up in **LISTENING** state; speak your command · Kêu bíp + cửa sổ agent hiện trạng thái **LISTENING**; nói lệnh của bạn |
+| **Press once** while listening · **Bấm 1 lần** khi đang nghe | Stop recording → transcribe → the agent runs the command · Dừng ghi âm → nhận dạng → agent thực thi lệnh |
+| **Hold again** while listening **or** while the agent is running · **Giữ lại** khi đang nghe **hoặc** khi agent đang chạy | Cancel the current run and **start listening again** (console clears, then LISTENING…) · Huỷ lượt hiện tại và **nghe lại từ đầu** (cửa sổ xoá rồi hiện LISTENING…) |
+| **Double‑tap** the touchpad while listening **or** running · **Chạm 2 lần** touchpad khi đang nghe **hoặc** đang chạy | Cancel the AI agent entirely · Huỷ hẳn AI agent |
+
+The agent console (bottom‑right) shows what you said (🗣), the model's thinking (💭), each tool it runs (⚙︎) and the result (✓). Exit the browser from the **⏻** icon on the toolbar, the web remote, or the start panel — not from the temple button (that is the agent now). · Cửa sổ agent (góc dưới phải) hiện câu bạn nói (🗣), suy nghĩ của model (💭), từng công cụ chạy (⚙︎) và kết quả (✓). Thoát trình duyệt bằng biểu tượng **⏻** trên thanh công cụ, web remote, hoặc bảng khởi động — không dùng nút thái dương nữa (giờ dành cho agent).
+
+While the browser is in the foreground it asks the Rokid system to disable the button's photo/video actions, and restores them when you leave — same mechanism as rokid‑zoom‑in‑camera. Two‑finger gestures are owned by the Rokid system (volume, AI assistant) and cannot be remapped by an app; see `docs/gesture-lab/README.md` for the full measured gesture table. · Khi trình duyệt đang mở, app yêu cầu hệ thống Rokid tắt chức năng chụp ảnh/quay phim của nút và khôi phục khi thoát. Cử chỉ 2 ngón do hệ thống Rokid chiếm (âm lượng, trợ lý AI) nên app không map lại được.
 
 ## Install
 
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.19.1.apk
+adb install -r releases/rokid-glass-browser-1.20.0.apk
 ```
 
 ## Use

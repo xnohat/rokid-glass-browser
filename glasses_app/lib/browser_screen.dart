@@ -896,18 +896,22 @@ class _BrowserScreenState extends State<BrowserScreen>
           unawaited(
             _methodChannel.invokeMethod('beep', {'kind': 'stop'}).catchError((_) => null),
           );
-          _setMicStatus('⏳ Recognising…');
+          _agentConsole('⏳ Recognising…');
           try {
             final text = await _asr.stopAndTranscribe();
             if (text.trim().isEmpty) {
-              _setMicStatus("Didn't catch that", clearAfterMs: 2500);
+              _agentConsole("⚠︎ Didn't catch that");
+              _agentHideTimer?.cancel();
+              _agentHideTimer = Timer(const Duration(milliseconds: 2500),
+                  () => mounted ? setState(() => _agentPanelOpen = false) : null);
             } else {
               await _runAgentCommand(text.trim());
             }
           } catch (e) {
-            _setMicStatus(
-                e is StateError ? e.message : 'Recognition failed',
-                clearAfterMs: 4000);
+            _agentConsole('⚠︎ ${e is StateError ? e.message : 'Recognition failed'}');
+            _agentHideTimer?.cancel();
+            _agentHideTimer = Timer(const Duration(seconds: 4),
+                () => mounted ? setState(() => _agentPanelOpen = false) : null);
           }
           return;
         }
@@ -935,36 +939,23 @@ class _BrowserScreenState extends State<BrowserScreen>
           });
         }
       case 'hw_button_long':
-        // HOLD = talk to the AI agent. Holding again while it listens cancels.
-        // (Exit lives on the HUD power icon, the web remote and the start panel.)
+        // HOLD = talk to the AI agent, and the console pops up in LISTENING
+        // state. Holding again while it is listening OR while it is running a
+        // command cancels the current run and immediately starts listening
+        // again (console clears, then shows LISTENING…).
+        // Exit lives on the HUD power icon, the web remote and the start panel.
         _hwPressTimer?.cancel();
         _hwPressCount = 0;
-        if (_agentStarting) return; // mid-startup, ignore
-        if (_agentListening) {
+        if (_agentStarting) return; // mid-startup, ignore duplicate LONG
+        if (_agentListening || _agent.busy) {
+          // Cancel whatever is happening, then re-listen in the same gesture.
           _agentListening = false;
+          _agent.cancel();
           try {
-            await _asr.stopAndTranscribe();
+            await _asr.abort();
           } catch (_) {}
-          _setMicStatus('Agent cancelled', clearAfterMs: 2000);
-          return;
         }
-        // Mark synchronously so a duplicate LONG (same physical hold) is a no-op
-        // and a stray UP during startup cannot slip through.
-        if (_agentStarting) return;
-        _agentStarting = true;
-        try {
-          await _asr.start();
-          _agentStarting = false;
-          _agentListening = true;
-          _agentListenStartMs = DateTime.now().millisecondsSinceEpoch;
-          unawaited(
-            _methodChannel.invokeMethod('beep', {'kind': 'start'}).catchError((_) => null),
-          );
-          _setMicStatus('🤖 AGENT LISTENING… press the button once to run');
-        } catch (_) {
-          _agentStarting = false;
-          _setMicStatus('Cannot open microphone', clearAfterMs: 2500);
-        }
+        await _startAgentListening();
       case 'cursor_dblclick':
         // Two native taps within the double-tap window; the WebView itself
         // synthesises the dblclick event (verified), so do not add another.
@@ -972,6 +963,12 @@ class _BrowserScreenState extends State<BrowserScreen>
         await Future<void>.delayed(const Duration(milliseconds: 90));
         await _handleCommand({'action': 'cursor_click'});
       case 'touchpad_back':
+        // Highest priority: if the AI agent is listening or running a command,
+        // a one-finger double-tap CANCELS it.
+        if (_agentListening || _agentStarting || _agent.busy) {
+          await _cancelAgent();
+          return;
+        }
         // If any overlay is open, a one-finger double-tap closes it first
         // (fast dismiss without hunting for the ✕ with the cursor).
         if (_showWebRemotePanel || _showUrlKeyboard || _showTextKeyboard) {
@@ -2210,6 +2207,67 @@ class _BrowserScreenState extends State<BrowserScreen>
         _agentScroll.jumpTo(_agentScroll.position.maxScrollExtent);
       }
     });
+  }
+
+  /// Begin voice capture for the agent and show the console in a LISTENING
+  /// state. Safe to call repeatedly (mid-startup / already-listening no-op).
+  Future<void> _startAgentListening() async {
+    if (_agentStarting || _agentListening) return;
+    // A new command supersedes any run in progress.
+    _agent.cancel();
+    _agentStarting = true;
+    _agentHideTimer?.cancel();
+    setState(() {
+      _agentPanelOpen = true;
+      _micStatus = null;
+      _agentLog
+        ..clear()
+        ..add('🎤 LISTENING…  (hold again = restart · double-tap = cancel)');
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_agentScroll.hasClients) {
+        _agentScroll.jumpTo(_agentScroll.position.maxScrollExtent);
+      }
+    });
+    try {
+      await _asr.start();
+      _agentStarting = false;
+      _agentListening = true;
+      _agentListenStartMs = DateTime.now().millisecondsSinceEpoch;
+      unawaited(_methodChannel
+          .invokeMethod('beep', {'kind': 'start'}).catchError((_) => null));
+    } catch (_) {
+      _agentStarting = false;
+      _agentListening = false;
+      _agentConsole('⚠︎ Cannot open microphone');
+      _agentHideTimer = Timer(const Duration(seconds: 4),
+          () => mounted ? setState(() => _agentPanelOpen = false) : null);
+    }
+  }
+
+  /// Cancel everything the agent is doing: stop listening (discard audio) and
+  /// abort any running command. Clears the console.
+  Future<void> _cancelAgent() async {
+    final wasActive = _agentListening || _agentStarting || _agent.busy;
+    _agent.cancel();
+    if (_agentListening || _agentStarting) {
+      _agentStarting = false;
+      _agentListening = false;
+      await _asr.abort();
+    }
+    if (!mounted) return;
+    if (wasActive) {
+      unawaited(_methodChannel
+          .invokeMethod('beep', {'kind': 'stop'}).catchError((_) => null));
+      setState(() {
+        _agentLog
+          ..clear()
+          ..add('✕ Cancelled');
+      });
+      _agentHideTimer?.cancel();
+      _agentHideTimer = Timer(const Duration(milliseconds: 1500),
+          () => mounted ? setState(() => _agentPanelOpen = false) : null);
+    }
   }
 
   Future<void> _runAgentCommand(String command) async {

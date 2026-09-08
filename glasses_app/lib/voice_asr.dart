@@ -59,6 +59,15 @@ class VoiceAsr {
     _recording = true;
   }
 
+  /// Stops recording and throws the audio away (used to cancel listening).
+  Future<void> abort() async {
+    if (!_recording) return;
+    _recording = false;
+    try {
+      await _channel.invokeMethod<String>('asrStop');
+    } catch (_) {}
+  }
+
   /// Stops recording and returns the recognised text ('' on silence).
   /// Throws [StateError] with a human message when key/network fails.
   Future<String> stopAndTranscribe({String lang = 'vi'}) async {
