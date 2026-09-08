@@ -178,6 +178,8 @@ class _BrowserScreenState extends State<BrowserScreen>
           // Open the Web Remote panel on launch so pairing is one step away.
           _showWebRemotePanel = true;
         });
+        // Auto-start the server so the address/QR is ready without pressing Start.
+        _startWebRemote();
       }
     });
   }
