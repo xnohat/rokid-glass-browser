@@ -141,6 +141,31 @@ class AgentVision {
     }
   }
 
+  /// Describe arbitrary media bytes (image/audio/video) with Gemini. Used by
+  /// the file reader for pictures/sound/clips on disk.
+  Future<String> describeBytes(
+      List<int> bytes, String mime, String question,
+      {required String kind}) async {
+    final key = await VoiceAsr.loadKey();
+    if (key.isEmpty) {
+      throw StateError('No Gemini API key (set it in the web remote)');
+    }
+    if (bytes.isEmpty) throw StateError('Empty file');
+    final def = kind == 'image'
+        ? 'Describe this image concisely: main content and any readable text.'
+        : kind == 'audio'
+            ? 'Transcribe or describe this audio concisely.'
+            : 'Summarise what happens in this video in a few sentences.';
+    final prompt =
+        question.trim().isEmpty ? "$def Answer in the user's language." : question.trim();
+    return _generate(key, [
+      {'text': prompt},
+      {
+        'inline_data': {'mime_type': mime, 'data': base64Encode(Uint8List.fromList(bytes))}
+      },
+    ]);
+  }
+
   /// Returns a canonical youtube.com/watch?v=ID url if [url] is a YouTube video.
   static String? _youtubeWatchUrl(String? url) {
     if (url == null || url.isEmpty) return null;

@@ -49,7 +49,9 @@ class BrowserAgent {
   static const _toolNames = {
     'navigate', 'back', 'forward', 'reload', 'scroll',
     'read_page', 'click', 'type', 'press_enter', 'app_action',
-    'see_page', 'watch_video', 'listen_audio', 'done',
+    'see_page', 'watch_video', 'listen_audio',
+    'list_files', 'read_file', 'write_file', 'delete_file', 'download_file',
+    'done',
   };
 
   static const _systemPrompt = '''
@@ -62,7 +64,13 @@ Rules:
 - click takes either index (from read_page) or text. After a click that navigates, call read_page again.
 - To search a site: navigate to it, click its search box, type the query, press_enter.
 - You may go straight to a search URL when you know it (e.g. https://m.youtube.com/results?search_query=...).
-- You can SEE and HEAR: use see_page to look at images / what is on screen, watch_video to understand the video that is playing (a few frames + its audio), and listen_audio to hear/transcribe the audio. Use these when the user asks about a picture, a video's content, or a sound — read_page only gives text.
+- You can SEE and HEAR: use see_page to look at images / what is on screen, watch_video to understand the video that is playing, and listen_audio to hear (glasses microphone / ambient). Use these when the user asks about a picture, a video's content, or a sound — read_page only gives text.
+- You have a private FILE workspace (sandboxed folder on the glasses): list_files, read_file, write_file, delete_file, download_file. Use it to save/read notes, transcripts, or downloaded media.
+- COMBINE tools to reach a goal, e.g.:
+  * "what is in this image URL" → download_file the URL, then read_file it (media understanding).
+  * "save a summary of this video" → watch_video to summarise, then write_file the summary.
+  * "search X and tell me about the first result's video" → navigate/search, read_page, click the result, then watch_video.
+  Prefer the fewest tools that get the job done; after acting, call done with a short spoken-friendly answer.
 - Never ask the user questions; make a reasonable choice and continue.
 - Always answer in the SAME language the user spoke (Vietnamese command → Vietnamese reply). The reply may be read aloud, so keep it short and natural.
 - For app-level requests (close/exit the browser, close a dialog, dark/transparent mode, zoom, brightness, volume, Wi-Fi) use app_action.
@@ -163,6 +171,66 @@ Rules:
           'question': {'type': 'string'},
           'seconds': {'type': 'integer'},
         },
+      }
+    },
+    {
+      'name': 'list_files',
+      'description': 'List files/folders in the private workspace (a sandboxed folder on the glasses). '
+          'Use to see what has been saved before reading/writing. path is a folder relative to the workspace root (empty = root).',
+      'parameters': {
+        'type': 'object',
+        'properties': {'path': {'type': 'string'}},
+      }
+    },
+    {
+      'name': 'read_file',
+      'description': 'Read a file from the workspace. Text files return their content; '
+          'images/audio/video are understood via Gemini and a description is returned (optional question focuses it). '
+          'Combine with download_file (fetch something first) or write_file (read back what you saved).',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'path': {'type': 'string'},
+          'question': {'type': 'string'},
+        },
+        'required': ['path']
+      }
+    },
+    {
+      'name': 'write_file',
+      'description': 'Create or overwrite a text file in the workspace (set append=true to add to the end). '
+          'Use to save notes, transcripts, or results the user asked to keep. path is relative to the workspace root.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'path': {'type': 'string'},
+          'content': {'type': 'string'},
+          'append': {'type': 'boolean'},
+        },
+        'required': ['path', 'content']
+      }
+    },
+    {
+      'name': 'delete_file',
+      'description': 'Delete a file (or folder) from the workspace.',
+      'parameters': {
+        'type': 'object',
+        'properties': {'path': {'type': 'string'}},
+        'required': ['path']
+      }
+    },
+    {
+      'name': 'download_file',
+      'description': 'Download an http/https URL into the workspace (size-capped). '
+          'Use to fetch an image/audio/video/document, THEN read_file it to understand its contents, '
+          'or to save something for the user. path is the destination filename (empty = derive from URL).',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'url': {'type': 'string'},
+          'path': {'type': 'string'},
+        },
+        'required': ['url']
       }
     },
     {
@@ -283,8 +351,11 @@ Rules:
             return 'Cancelled';
           } else {
             // Multimodal tools record audio + call Gemini vision — allow longer.
-            final toolMs = (name == 'watch_video' || name == 'listen_audio')
-                ? 75000
+            final toolMs = (name == 'watch_video' ||
+                    name == 'listen_audio' ||
+                    name == 'download_file' ||
+                    name == 'read_file')
+                ? 90000
                 : (name == 'see_page' ? 40000 : _maxToolMs);
             try {
               out = await runTool(name, args)

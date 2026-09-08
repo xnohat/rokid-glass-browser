@@ -596,6 +596,9 @@ class MainActivity : FlutterActivity() {
                         runOnUiThread { result.success(if (f != null && f.exists()) f.absolutePath else null) }
                     }.start()
                 }
+                "filesDir" -> {
+                    result.success(filesDir.absolutePath)
+                }
                 "cursorScreenPos" -> {
                     // Actual on-screen centre of the cursor dot in window logical px.
                     val cv = cursorView

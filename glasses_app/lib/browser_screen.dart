@@ -12,6 +12,7 @@ import 'voice_asr.dart';
 import 'browser_agent.dart';
 import 'agent_settings.dart';
 import 'agent_vision.dart';
+import 'agent_files.dart';
 import 'web_remote_server.dart';
 
 const _kGreen = Color(0xFF00FF00);
@@ -62,6 +63,10 @@ class _BrowserScreenState extends State<BrowserScreen>
     _methodChannel,
     (w, h) => _methodChannel
         .invokeMethod<Uint8List>('captureFrame', {'maxWidth': w, 'maxHeight': h}),
+  );
+  late final AgentFiles _files = AgentFiles(
+    _vision,
+    () => _methodChannel.invokeMethod<String>('filesDir'),
   );
   late final BrowserAgent _agent = BrowserAgent(
     runTool: _runAgentTool,
@@ -2247,6 +2252,26 @@ class _BrowserScreenState extends State<BrowserScreen>
           seconds: (args['seconds'] is int) ? args['seconds'] as int : 8,
         );
         return {'ok': true, 'observation': desc};
+      case 'list_files':
+        return await _files.listDir((args['path'] ?? '').toString());
+      case 'read_file':
+        return await _files.readFile(
+          (args['path'] ?? '').toString(),
+          (args['question'] ?? '').toString(),
+        );
+      case 'write_file':
+        return await _files.writeFile(
+          (args['path'] ?? '').toString(),
+          (args['content'] ?? '').toString(),
+          append: args['append'] == true,
+        );
+      case 'delete_file':
+        return await _files.deleteFile((args['path'] ?? '').toString());
+      case 'download_file':
+        return await _files.download(
+          (args['url'] ?? '').toString(),
+          (args['path'] ?? '').toString(),
+        );
       default:
         return {'error': 'unknown tool'};
     }
