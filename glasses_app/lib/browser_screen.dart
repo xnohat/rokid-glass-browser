@@ -11,6 +11,7 @@ import 'url_keyboard.dart';
 import 'voice_asr.dart';
 import 'browser_agent.dart';
 import 'agent_settings.dart';
+import 'agent_vision.dart';
 import 'web_remote_server.dart';
 
 const _kGreen = Color(0xFF00FF00);
@@ -57,6 +58,11 @@ class _BrowserScreenState extends State<BrowserScreen>
   bool _showTextKeyboard = false;
   late final VoiceAsr _asr = VoiceAsr(_methodChannel);
   late final AgentSpeaker _speaker = AgentSpeaker(_methodChannel);
+  late final AgentVision _vision = AgentVision(
+    _methodChannel,
+    (w, h) => _methodChannel
+        .invokeMethod<Uint8List>('captureFrame', {'maxWidth': w, 'maxHeight': h}),
+  );
   late final BrowserAgent _agent = BrowserAgent(
     runTool: _runAgentTool,
     onStatus: _agentConsole,
@@ -2225,6 +2231,22 @@ class _BrowserScreenState extends State<BrowserScreen>
           default:
             return {'error': 'unknown app action $a'};
         }
+      case 'see_page':
+        final desc = await _vision.seePage((args['question'] ?? '').toString());
+        return {'ok': true, 'observation': desc};
+      case 'watch_video':
+        final desc = await _vision.watchVideo(
+          (args['question'] ?? '').toString(),
+          seconds: (args['seconds'] is int) ? args['seconds'] as int : 8,
+          currentUrl: _url,
+        );
+        return {'ok': true, 'observation': desc};
+      case 'listen_audio':
+        final desc = await _vision.listenAudio(
+          (args['question'] ?? '').toString(),
+          seconds: (args['seconds'] is int) ? args['seconds'] as int : 8,
+        );
+        return {'ok': true, 'observation': desc};
       default:
         return {'error': 'unknown tool'};
     }

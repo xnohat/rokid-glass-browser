@@ -48,7 +48,8 @@ class BrowserAgent {
 
   static const _toolNames = {
     'navigate', 'back', 'forward', 'reload', 'scroll',
-    'read_page', 'click', 'type', 'press_enter', 'app_action', 'done',
+    'read_page', 'click', 'type', 'press_enter', 'app_action',
+    'see_page', 'watch_video', 'listen_audio', 'done',
   };
 
   static const _systemPrompt = '''
@@ -61,6 +62,7 @@ Rules:
 - click takes either index (from read_page) or text. After a click that navigates, call read_page again.
 - To search a site: navigate to it, click its search box, type the query, press_enter.
 - You may go straight to a search URL when you know it (e.g. https://m.youtube.com/results?search_query=...).
+- You can SEE and HEAR: use see_page to look at images / what is on screen, watch_video to understand the video that is playing (a few frames + its audio), and listen_audio to hear/transcribe the audio. Use these when the user asks about a picture, a video's content, or a sound — read_page only gives text.
 - Never ask the user questions; make a reasonable choice and continue.
 - Always answer in the SAME language the user spoke (Vietnamese command → Vietnamese reply). The reply may be read aloud, so keep it short and natural.
 - For app-level requests (close/exit the browser, close a dialog, dark/transparent mode, zoom, brightness, volume, Wi-Fi) use app_action.
@@ -129,6 +131,38 @@ Rules:
         'type': 'object',
         'properties': {'action': {'type': 'string'}},
         'required': ['action']
+      }
+    },
+    {
+      'name': 'see_page',
+      'description': 'Look at what is currently on the screen (image understanding). '
+          'Use for pictures, charts, or reading visible content. Optional question focuses the look.',
+      'parameters': {
+        'type': 'object',
+        'properties': {'question': {'type': 'string'}},
+      }
+    },
+    {
+      'name': 'watch_video',
+      'description': 'Understand the video that is playing: samples a few frames and its audio. '
+          'Use to summarise or answer about a video. Optional question; optional seconds (3-20, default 8).',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'question': {'type': 'string'},
+          'seconds': {'type': 'integer'},
+        },
+      }
+    },
+    {
+      'name': 'listen_audio',
+      'description': 'Listen to the audio and transcribe/describe it. Optional question; optional seconds (3-30, default 8).',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'question': {'type': 'string'},
+          'seconds': {'type': 'integer'},
+        },
       }
     },
     {
@@ -248,9 +282,13 @@ Rules:
           } else if (gen != _generation) {
             return 'Cancelled';
           } else {
+            // Multimodal tools record audio + call Gemini vision — allow longer.
+            final toolMs = (name == 'watch_video' || name == 'listen_audio')
+                ? 75000
+                : (name == 'see_page' ? 40000 : _maxToolMs);
             try {
               out = await runTool(name, args)
-                  .timeout(const Duration(milliseconds: _maxToolMs));
+                  .timeout(Duration(milliseconds: toolMs));
             } on TimeoutException {
               out = {'error': 'tool timed out'};
             } catch (e) {

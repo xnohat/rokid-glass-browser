@@ -1,0 +1,206 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/services.dart';
+
+import 'voice_asr.dart';
+
+/// Multimodal tools for the agent, powered by Gemini: look at what's on screen
+/// (image), watch the playing video (a few frames + its audio), or listen to
+/// the audio. Each returns a short text description the agent loop can use.
+class AgentVision {
+  AgentVision(this._channel, this._capture);
+  final MethodChannel _channel;
+
+  /// Grabs one on-screen frame as JPEG bytes (captures the video surface too).
+  final Future<Uint8List?> Function(int maxW, int maxH) _capture;
+
+  static const _visionModel = 'gemini-2.5-flash';
+
+  /// Describe what is currently visible on the glasses (image understanding).
+  Future<String> seePage(String question) async {
+    final key = await VoiceAsr.loadKey();
+    if (key.isEmpty) {
+      throw StateError('No Gemini API key (set it in the web remote)');
+    }
+    final frame = await _capture(720, 960);
+    if (frame == null || frame.isEmpty) {
+      throw StateError('Could not capture the screen');
+    }
+    final prompt = question.trim().isEmpty
+        ? 'Describe what is shown on this screen concisely: main content, any '
+            'readable text, and notable UI. Answer in the user\'s language.'
+        : question.trim();
+    return _generate(key, [
+      {'text': prompt},
+      {
+        'inline_data': {
+          'mime_type': 'image/jpeg',
+          'data': base64Encode(frame),
+        }
+      },
+    ]);
+  }
+
+  /// Watch the playing video. On YouTube, sends the URL straight to Gemini
+  /// (native video understanding). Elsewhere, samples frames + audio.
+  Future<String> watchVideo(String question,
+      {int seconds = 8, String? currentUrl}) async {
+    final key = await VoiceAsr.loadKey();
+    if (key.isEmpty) {
+      throw StateError('No Gemini API key (set it in the web remote)');
+    }
+    // Fast path: hand YouTube URLs directly to Gemini (no capture needed).
+    final ytUrl = _youtubeWatchUrl(currentUrl);
+    if (ytUrl != null) {
+      return _generate(key, [
+        {
+          'text': question.trim().isEmpty
+              ? 'Summarise what happens in this video (visuals + spoken '
+                  "content) in a few sentences. Answer in the user's language."
+              : question.trim(),
+        },
+        {
+          'file_data': {'file_uri': ytUrl}
+        },
+      ]);
+    }
+    final clamped = seconds.clamp(3, 20);
+    // Start audio capture in parallel with frame sampling.
+    final audioFuture = _recordAudio(clamped * 1000);
+    final frames = <Uint8List>[];
+    final frameCount = clamped <= 6 ? 3 : (clamped <= 12 ? 4 : 6);
+    final gap = (clamped * 1000 / frameCount).round();
+    for (var i = 0; i < frameCount; i++) {
+      final f = await _capture(640, 854);
+      if (f != null && f.isNotEmpty) frames.add(f);
+      if (i < frameCount - 1) {
+        await Future<void>.delayed(Duration(milliseconds: gap));
+      }
+    }
+    final wavPath = await audioFuture;
+    if (frames.isEmpty) throw StateError('Could not capture the video');
+
+    final parts = <Map<String, dynamic>>[
+      {
+        'text': question.trim().isEmpty
+            ? 'These are frames sampled over ~$clamped seconds of a video that '
+                'is playing, with its audio attached. Summarise what is '
+                'happening (visuals + what is said/heard) in a few sentences. '
+                "Answer in the user's language."
+            : question.trim(),
+      },
+    ];
+    for (final f in frames) {
+      parts.add({
+        'inline_data': {'mime_type': 'image/jpeg', 'data': base64Encode(f)}
+      });
+    }
+    if (wavPath != null) {
+      final bytes = await File(wavPath).readAsBytes();
+      if (bytes.length > 4000) {
+        parts.add({
+          'inline_data': {
+            'mime_type': 'audio/wav',
+            'data': base64Encode(bytes),
+          }
+        });
+      }
+    }
+    return _generate(key, parts);
+  }
+
+  /// Listen to the audio for [seconds] and transcribe/summarise it.
+  Future<String> listenAudio(String question, {int seconds = 8}) async {
+    final key = await VoiceAsr.loadKey();
+    if (key.isEmpty) {
+      throw StateError('No Gemini API key (set it in the web remote)');
+    }
+    final clamped = seconds.clamp(3, 30);
+    final wavPath = await _recordAudio(clamped * 1000);
+    if (wavPath == null) throw StateError('Could not record audio');
+    final bytes = await File(wavPath).readAsBytes();
+    if (bytes.length < 4000) throw StateError('No audio captured');
+    return _generate(key, [
+      {
+        'text': question.trim().isEmpty
+            ? 'Listen to this audio and describe/transcribe what is heard '
+                "concisely. Answer in the user's language."
+            : question.trim(),
+      },
+      {
+        'inline_data': {'mime_type': 'audio/wav', 'data': base64Encode(bytes)}
+      },
+    ]);
+  }
+
+  /// Records mic audio for [ms] into a WAV file via the native recorder,
+  /// returning its path (or null on failure). Reuses the ASR capture path.
+  Future<String?> _recordAudio(int ms) async {
+    try {
+      await _channel.invokeMethod('asrStart');
+      await Future<void>.delayed(Duration(milliseconds: ms));
+      final path = await _channel.invokeMethod<String>('asrStop');
+      return path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Returns a canonical youtube.com/watch?v=ID url if [url] is a YouTube video.
+  static String? _youtubeWatchUrl(String? url) {
+    if (url == null || url.isEmpty) return null;
+    final u = Uri.tryParse(url);
+    if (u == null) return null;
+    final host = u.host.toLowerCase();
+    if (host.contains('youtu.be')) {
+      final id = u.pathSegments.isNotEmpty ? u.pathSegments.first : '';
+      return id.isEmpty ? null : 'https://www.youtube.com/watch?v=$id';
+    }
+    if (host.contains('youtube.com')) {
+      final id = u.queryParameters['v'];
+      if (id != null && id.isNotEmpty) {
+        return 'https://www.youtube.com/watch?v=$id';
+      }
+      if (u.path.startsWith('/shorts/') && u.pathSegments.length >= 2) {
+        return 'https://www.youtube.com/watch?v=${u.pathSegments[1]}';
+      }
+    }
+    return null;
+  }
+
+  Future<String> _generate(String key, List<Map<String, dynamic>> parts) async {
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    try {
+      final req = await client.postUrl(Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/$_visionModel:generateContent?key=$key'));
+      req.headers.contentType = ContentType.json;
+      req.write(jsonEncode({
+        'contents': [
+          {'parts': parts}
+        ],
+        'generationConfig': {'temperature': 0.2, 'maxOutputTokens': 600},
+      }));
+      final res = await req.close().timeout(const Duration(seconds: 60));
+      final txt = await res.transform(utf8.decoder).join();
+      if (res.statusCode != 200) {
+        throw StateError('Gemini HTTP ${res.statusCode}');
+      }
+      final j = jsonDecode(txt);
+      final outParts =
+          (j['candidates']?[0]?['content']?['parts'] as List?) ?? const [];
+      final buf = StringBuffer();
+      for (final p in outParts) {
+        final t = (p['text'] ?? '').toString();
+        if (t.isNotEmpty) buf.write(t);
+      }
+      final out = buf.toString().trim();
+      if (out.isEmpty) throw StateError('Gemini returned no text');
+      return out;
+    } finally {
+      client.close(force: true);
+    }
+  }
+}

@@ -67,6 +67,8 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 
 **Conversational assistant · Trợ lý hội thoại:** with *Conversation memory* on (default), the agent remembers the whole app session, so you can talk to it back‑and‑forth. Turn on *Speak the reply* to hear its answer (Gemini TTS voice), and edit its *persona* — all in the web remote's **AI Assistant** settings. · Khi bật *Conversation memory* (mặc định), agent nhớ cả phiên làm việc để bạn đối thoại qua lại; bật *Speak the reply* để nghe câu trả lời (giọng Gemini TTS) và sửa *persona* — tất cả trong mục **AI Assistant** của web remote.
 
+**Multimodal (see / watch / listen) · Đa phương thức:** the agent can look at what's on screen (`see_page`), understand the playing video (`watch_video` — YouTube URLs go straight to Gemini's video understanding), and hear audio (`listen_audio`), all via Gemini. Ask “what's in this picture / what is this video about / what did they just say”. · Agent có thể xem ảnh trên màn hình, hiểu video đang phát (YouTube gửi thẳng URL cho Gemini) và nghe âm thanh — hỏi “ảnh này là gì / video này nói gì / vừa nói gì vậy”.
+
 The agent console (bottom‑right) shows what you said (🗣), the model's thinking (💭), each tool it runs (⚙︎) and the result (✓). Exit the browser from the **⏻** icon on the toolbar, the web remote, or the start panel — not from the temple button (that is the agent now). · Cửa sổ agent (góc dưới phải) hiện câu bạn nói (🗣), suy nghĩ của model (💭), từng công cụ chạy (⚙︎) và kết quả (✓). Thoát trình duyệt bằng biểu tượng **⏻** trên thanh công cụ, web remote, hoặc bảng khởi động — không dùng nút thái dương nữa (giờ dành cho agent).
 
 While the browser is in the foreground it asks the Rokid system to disable the button's photo/video actions, and restores them when you leave — same mechanism as rokid‑zoom‑in‑camera. Two‑finger gestures are owned by the Rokid system (volume, AI assistant) and cannot be remapped by an app; see `docs/gesture-lab/README.md` for the full measured gesture table. · Khi trình duyệt đang mở, app yêu cầu hệ thống Rokid tắt chức năng chụp ảnh/quay phim của nút và khôi phục khi thoát. Cử chỉ 2 ngón do hệ thống Rokid chiếm (âm lượng, trợ lý AI) nên app không map lại được.
@@ -76,7 +78,7 @@ While the browser is in the foreground it asks the Rokid system to disable the b
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.22.1.apk
+adb install -r releases/rokid-glass-browser-1.23.0.apk
 ```
 
 ## Use
