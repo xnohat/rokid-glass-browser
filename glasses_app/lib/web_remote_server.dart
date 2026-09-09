@@ -39,6 +39,7 @@ class WebRemoteServer {
   final void Function(WebRemoteStatus status)? onStatusChanged;
   final Duration pairingLifetime;
   final Duration reconnectGrace;
+
   /// Preferred listening port (bookmarkable). 0 = OS assigned.
   final int preferredPort;
   Timer? _graceTimer;
@@ -238,7 +239,8 @@ class WebRemoteServer {
         return all..addAll(chunk);
       });
       final decoded = jsonDecode(utf8.decode(bytes));
-      if (decoded is! Map || decoded.keys.any((key) => key != 'code' && key != 'force')) {
+      if (decoded is! Map ||
+          decoded.keys.any((key) => key != 'code' && key != 'force')) {
         throw const FormatException('Invalid pair schema');
       }
       // Owner decision 2026-09-07: no pairing code. Knowing the LAN address
@@ -246,8 +248,14 @@ class WebRemoteServer {
       // can still revoke/stop from the glasses, and only one controller is
       // admitted at a time. The optional code is still honoured if supplied.
       final code = decoded['code'];
-      if (code is String && code.isNotEmpty && !_constantTimeEquals(code, pairingCode)) {
-        await _reject(request, HttpStatus.unauthorized, 'Incorrect pairing code');
+      if (code is String &&
+          code.isNotEmpty &&
+          !_constantTimeEquals(code, pairingCode)) {
+        await _reject(
+          request,
+          HttpStatus.unauthorized,
+          'Incorrect pairing code',
+        );
         return;
       }
       // No pairing code (owner decision): a fresh /pair simply REPLACES the
@@ -259,14 +267,21 @@ class WebRemoteServer {
       // is replaced, which is the "backgrounded Safari tab" case.
       final force = decoded['force'] == true;
       if (_controller != null && _authenticated && !force) {
-        await _reject(request, HttpStatus.conflict, 'A controller is already paired');
+        await _reject(
+          request,
+          HttpStatus.conflict,
+          'A controller is already paired',
+        );
         return;
       }
       if (_controller != null || _controllerReserved) {
         final old = _controller;
         _releaseController(old, hard: false);
         try {
-          await old?.close(WebSocketStatus.goingAway, 'Replaced by a new controller');
+          await old?.close(
+            WebSocketStatus.goingAway,
+            'Replaced by a new controller',
+          );
         } catch (_) {}
       }
       _sessionToken = base64Url.encode(
@@ -417,10 +432,12 @@ class WebRemoteServer {
       }
       if (command['action'] == 'exit_app') {
         _send({'type': 'bye', 'reason': 'exit'});
-        unawaited(Future<void>(() async {
-          await stop();
-          await onCommand(command);
-        }));
+        unawaited(
+          Future<void>(() async {
+            await stop();
+            await onCommand(command);
+          }),
+        );
         return;
       }
       Future<void>.sync(() => onCommand(command))
@@ -480,21 +497,35 @@ class WebRemoteServer {
         if (value['on'] is! bool) throw const FormatException('Invalid flag');
       case 'set_agent_voice':
         allow('voice');
-        if (value['voice'] is! String || (value['voice'] as String).length > 40) throw const FormatException('Invalid voice');
+        if (value['voice'] is! String || (value['voice'] as String).length > 40)
+          throw const FormatException('Invalid voice');
       case 'set_agent_persona':
         allow('persona');
-        if (value['persona'] is! String || (value['persona'] as String).length > 1200) throw const FormatException('Invalid persona');
+        if (value['persona'] is! String ||
+            (value['persona'] as String).length > 1200)
+          throw const FormatException('Invalid persona');
       case 'agent_trace':
+      case 'agent_history':
+      case 'agent_history_clear':
         break;
+      case 'agent_history_remove':
+        allow('index');
+        if (value['index'] is! num)
+          throw const FormatException('Invalid history index');
       case 'agent_run':
         allow('text');
-        if (value['text'] is! String || (value['text'] as String).trim().isEmpty || (value['text'] as String).length > 400) throw const FormatException('Invalid command');
+        if (value['text'] is! String ||
+            (value['text'] as String).trim().isEmpty ||
+            (value['text'] as String).length > 400)
+          throw const FormatException('Invalid command');
       case 'set_asr_model':
         allow('model');
-        if (value['model'] is! String || (value['model'] as String).length > 80) throw const FormatException('Invalid model');
+        if (value['model'] is! String || (value['model'] as String).length > 80)
+          throw const FormatException('Invalid model');
       case 'set_asr_key':
         allow('key');
-        if (value['key'] is! String || (value['key'] as String).length > 200) throw const FormatException('Invalid key');
+        if (value['key'] is! String || (value['key'] as String).length > 200)
+          throw const FormatException('Invalid key');
       case 'history_remove':
         allow('url');
         if (value['url'] is! String) throw const FormatException('Invalid URL');
@@ -678,7 +709,16 @@ class WebRemoteServer {
   }
 
   void publishAgentTrace(List<Map<String, dynamic>> trace) {
-    if (_authenticated) _send({'type': 'agent_trace', 'trace': trace.length > 120 ? trace.sublist(trace.length - 120) : trace});
+    if (_authenticated)
+      _send({
+        'type': 'agent_trace',
+        'trace': trace.length > 120 ? trace.sublist(trace.length - 120) : trace,
+      });
+  }
+
+  void publishAgentHistory(List<Map<String, dynamic>> items) {
+    if (_authenticated)
+      _send({'type': 'agent_history', 'items': items.take(100).toList()});
   }
 
   void publishAgent(String message) {
@@ -686,7 +726,12 @@ class WebRemoteServer {
   }
 
   void publishAsrModel(String model, List<String>? models) {
-    if (_authenticated) _send({'type': 'asr_model', 'model': model, if (models != null) 'models': models});
+    if (_authenticated)
+      _send({
+        'type': 'asr_model',
+        'model': model,
+        if (models != null) 'models': models,
+      });
   }
 
   void publishAgentSettings() {
@@ -704,12 +749,17 @@ class WebRemoteServer {
 
   void publishAsrKeyState(String key) {
     if (_authenticated) {
-      _send({'type': 'asr_key', 'hasKey': key.isNotEmpty, 'tail': key.length > 4 ? key.substring(key.length - 4) : ''});
+      _send({
+        'type': 'asr_key',
+        'hasKey': key.isNotEmpty,
+        'tail': key.length > 4 ? key.substring(key.length - 4) : '',
+      });
     }
   }
 
   void publishHistory(List<String> items) {
-    if (_authenticated) _send({'type': 'history', 'items': items.take(200).toList()});
+    if (_authenticated)
+      _send({'type': 'history', 'items': items.take(200).toList()});
   }
 
   void publishState() {

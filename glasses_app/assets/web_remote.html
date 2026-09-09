@@ -31,6 +31,7 @@
       <div class="row"><button data-action="backspace">⌫ Delete</button><button data-action="enter">↵ Enter</button></div>
       <form id="rr-agent" class="row" style="margin:10px 0"><input id="rr-agent-text" class="grow" placeholder="Command the AI agent (e.g. open youtube and search palantir ontology)"><button id="rr-agent-help" type="button" title="Command examples" style="flex:0 0 auto;width:44px">?</button><button class="primary" type="submit">Run</button></form>
       <div class="feedback" id="rr-agent-state"></div>
+      <details id="rr-agent-history-box"><summary>Current session history</summary><div class="row" style="margin:6px 0"><button id="rr-agent-history-refresh" type="button">Load history</button><button id="rr-agent-history-clear-web" type="button" class="danger">Clear all</button></div><div id="rr-agent-history-list" class="hlist"></div></details>
       <details id="rr-trace-box"><summary>Agent log (for tuning prompts)</summary>
         <div class="row" style="margin:6px 0"><button id="rr-trace-refresh" type="button">Load log</button><button id="rr-trace-copy" type="button">Copy JSON</button></div>
         <pre id="rr-trace" style="max-height:40vh;overflow:auto;font-size:11px;white-space:pre-wrap;word-break:break-all"></pre>
@@ -83,7 +84,7 @@
   const byId=id=>document.getElementById(id), badge=byId('rr-badge'), feedback=byId('rr-feedback'), frame=byId('rr-frame'), preview=byId('rr-preview');
   const storageKey=`rokid-remote:${location.origin}`;
   let saved=null;try{saved=JSON.parse(sessionStorage.getItem(storageKey))}catch(_){}
-  let historyItems=[];
+  let historyItems=[], agentHistory=[];
   let socket=null, token=saved?.token||null, pendingFrame=null, objectUrl=null, requestId=0, pointer=null, padPointer=null, padMoved=false;
   const setFeedback=(message,error=false)=>{feedback.textContent=message;feedback.classList.toggle('error',error)};
   const setConnected=connected=>{if(!connected)byId('rr-pair-panel').classList.remove('hidden');byId('rr-pair-panel').classList.toggle('hidden',connected);byId('rr-controls').classList.toggle('hidden',!connected);badge.textContent=connected?'Paired':'Not paired'};
@@ -119,6 +120,7 @@
       pt.dataset.default=value.defaultPersona||'';
     }
     else if(value.type==='history'){historyItems=value.items||[];renderHistory()}
+    else if(value.type==='agent_history'){agentHistory=value.items||[];renderAgentHistory()}
     else if(value.type==='state'){if(value.url)byId('rr-url').value=value.url;if(value.visualMode)byId('rr-mode').value=value.visualMode;byId('rr-back').disabled=!value.canGoBack;byId('rr-forward').disabled=!value.canGoForward}
     else if(value.type==='command_ok'){setFeedback('Command received by the glasses')}
     else if(value.type==='error'){setFeedback(value.message||value.code,true);if(value.code==='unauthorized'||value.code==='revoked'){clearToken();ws.close();retryTimer=setTimeout(repair,800)}}return}
@@ -137,6 +139,10 @@
   document.querySelectorAll('[data-action]').forEach(button=>button.addEventListener('click',()=>send(button.dataset.action)));
   byId('rr-mode').addEventListener('change',event=>send('set_visual_mode',{mode:event.target.value}));
   byId('rr-asr-save').addEventListener('click',()=>{const k=byId('rr-asr-key').value.trim();if(!k){setFeedback('Enter a key first',true);return}send('set_asr_key',{key:k});byId('rr-asr-key').value=''});
+  const renderAgentHistory=()=>{const list=byId('rr-agent-history-list');list.innerHTML='';if(!agentHistory.length){list.innerHTML='<div class="hempty">No session history</div>';return}for(let i=0;i<agentHistory.length;i+=2){const u=agentHistory[i]?.parts?.[0]?.text||'',a=agentHistory[i+1]?.parts?.[0]?.text||'';const row=document.createElement('div');row.className='hitem';const text=document.createElement('a');text.href='#';text.textContent='🗣 '+u+' → '+a;const del=document.createElement('button');del.className='danger';del.textContent='✕';del.title='Delete this turn';del.addEventListener('click',()=>send('agent_history_remove',{index:i}));row.append(text,del);list.appendChild(row)}};
+  byId('rr-agent-history-box').addEventListener('toggle',()=>{if(byId('rr-agent-history-box').open)send('agent_history')});
+  byId('rr-agent-history-refresh').addEventListener('click',()=>send('agent_history'));
+  byId('rr-agent-history-clear-web').addEventListener('click',()=>{if(agentHistory.length&&confirm('Clear current agent session history?'))send('agent_history_clear')});
   byId('rr-trace-box').addEventListener('toggle',()=>{if(byId('rr-trace-box').open)send('agent_trace')});
   byId('rr-trace-refresh').addEventListener('click',()=>send('agent_trace'));
   byId('rr-trace-copy').addEventListener('click',()=>{navigator.clipboard&&navigator.clipboard.writeText(JSON.stringify(window.__trace||[],null,1));setFeedback('Log copied')});

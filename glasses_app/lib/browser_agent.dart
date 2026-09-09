@@ -5,8 +5,11 @@ import 'dart:io';
 import 'voice_asr.dart';
 
 /// Result of one tool call, handed back to the model.
-typedef AgentToolRunner = Future<Map<String, dynamic>> Function(
-    String name, Map<String, dynamic> args);
+typedef AgentToolRunner =
+    Future<Map<String, dynamic>> Function(
+      String name,
+      Map<String, dynamic> args,
+    );
 
 /// Voice/text driven browser agent: Gemini decides which browser tool to run
 /// next until it calls `done`. The tools themselves live in browser_screen.
@@ -21,6 +24,7 @@ class BrowserAgent {
   bool _busy = false;
   bool get busy => _busy;
   int _generation = 0;
+
   /// Cancels the in-flight run (e.g. user pressed cancel or started a new one).
   void cancel() => _generation++;
 
@@ -40,6 +44,13 @@ class BrowserAgent {
 
   /// Trace of the last runs (kept on the glasses, readable from the web remote).
   static final List<Map<String, dynamic>> trace = [];
+  static List<Map<String, dynamic>> get sessionHistory =>
+      List.unmodifiable(conversation);
+  static void removeHistoryTurn(int index) {
+    if (index >= 0 && index + 1 < conversation.length)
+      conversation.removeRange(index, index + 2);
+  }
+
   static const _maxTraceRuns = 20;
   static void _log(Map<String, dynamic> entry) {
     trace.add({'t': DateTime.now().toIso8601String(), ...entry});
@@ -47,10 +58,27 @@ class BrowserAgent {
   }
 
   static const _toolNames = {
-    'navigate', 'back', 'forward', 'reload', 'scroll',
-    'read_page', 'click', 'type', 'press_enter', 'app_action',
-    'see_page', 'watch_video', 'listen_audio',
-    'list_files', 'read_file', 'write_file', 'delete_file', 'download_file',
+    'navigate',
+    'back',
+    'forward',
+    'reload',
+    'scroll',
+    'read_page',
+    'click',
+    'type',
+    'press_enter',
+    'app_action',
+    'see_page',
+    'watch_video',
+    'listen_audio',
+    'see_camera',
+    'watch_camera',
+    'list_files',
+    'read_file',
+    'write_file',
+    'delete_file',
+    'download_file',
+    'run_shell',
     'done',
   };
 
@@ -80,79 +108,110 @@ Rules:
   static final List<Map<String, dynamic>> _tools = [
     {
       'name': 'navigate',
-      'description': 'Open a URL (adds https:// if missing) or search the web if the text is not a URL.',
+      'description':
+          'Open a URL (adds https:// if missing) or search the web if the text is not a URL.',
       'parameters': {
         'type': 'object',
-        'properties': {'url': {'type': 'string'}},
-        'required': ['url']
-      }
+        'properties': {
+          'url': {'type': 'string'},
+        },
+        'required': ['url'],
+      },
     },
-    {'name': 'back', 'description': 'Go back in history', 'parameters': {'type': 'object', 'properties': {}}},
-    {'name': 'forward', 'description': 'Go forward in history', 'parameters': {'type': 'object', 'properties': {}}},
-    {'name': 'reload', 'description': 'Reload the current page', 'parameters': {'type': 'object', 'properties': {}}},
+    {
+      'name': 'back',
+      'description': 'Go back in history',
+      'parameters': {'type': 'object', 'properties': {}},
+    },
+    {
+      'name': 'forward',
+      'description': 'Go forward in history',
+      'parameters': {'type': 'object', 'properties': {}},
+    },
+    {
+      'name': 'reload',
+      'description': 'Reload the current page',
+      'parameters': {'type': 'object', 'properties': {}},
+    },
     {
       'name': 'scroll',
-      'description': 'Scroll the page. direction: up|down|top|bottom. amount: small|page (default page).',
+      'description':
+          'Scroll the page. direction: up|down|top|bottom. amount: small|page (default page).',
       'parameters': {
         'type': 'object',
         'properties': {
           'direction': {'type': 'string'},
-          'amount': {'type': 'string'}
+          'amount': {'type': 'string'},
         },
-        'required': ['direction']
-      }
+        'required': ['direction'],
+      },
     },
     {
       'name': 'read_page',
-      'description': 'Return the page title, URL, visible text (truncated) and a numbered list of interactive elements.',
-      'parameters': {'type': 'object', 'properties': {}}
+      'description':
+          'Return the page title, URL, visible text (truncated) and a numbered list of interactive elements.',
+      'parameters': {'type': 'object', 'properties': {}},
     },
     {
       'name': 'click',
-      'description': 'Click an element by index (from read_page) or by its visible text.',
+      'description':
+          'Click an element by index (from read_page) or by its visible text.',
       'parameters': {
         'type': 'object',
         'properties': {
           'index': {'type': 'integer'},
-          'text': {'type': 'string'}
-        }
-      }
+          'text': {'type': 'string'},
+        },
+      },
     },
     {
       'name': 'type',
       'description': 'Type text into the focused field (click it first).',
       'parameters': {
         'type': 'object',
-        'properties': {'text': {'type': 'string'}},
-        'required': ['text']
-      }
+        'properties': {
+          'text': {'type': 'string'},
+        },
+        'required': ['text'],
+      },
     },
-    {'name': 'press_enter', 'description': 'Press Enter in the focused field (submits search forms)', 'parameters': {'type': 'object', 'properties': {}}},
+    {
+      'name': 'press_enter',
+      'description': 'Press Enter in the focused field (submits search forms)',
+      'parameters': {'type': 'object', 'properties': {}},
+    },
     {
       'name': 'app_action',
-      'description': 'Browser-app (not page) actions. action must be one of: '
+      'description':
+          'Browser-app (not page) actions. action must be one of: '
           'exit_app (close the browser on the glasses), close_overlay (dismiss any open dialog/keyboard/panel), '
           'open_web_remote, transparent_on, transparent_off, dark_on, dark_off, passthrough_toggle, theater_toggle, '
           'hud_toggle (show/hide the address bar), zoom_in, zoom_out, brighter, dimmer, volume_up, volume_down, '
           'clear_history. (Clearing the login session and changing Wi-Fi are NOT available to the agent for safety — tell the user to do those in the web remote settings.)',
       'parameters': {
         'type': 'object',
-        'properties': {'action': {'type': 'string'}},
-        'required': ['action']
-      }
+        'properties': {
+          'action': {'type': 'string'},
+        },
+        'required': ['action'],
+      },
     },
     {
       'name': 'see_page',
-      'description': 'Look at what is currently on the screen (image understanding). '
+      'description':
+          'Look at what is currently on the screen (image understanding). '
           'Use for pictures, charts, or reading visible content. Optional question focuses the look.',
       'parameters': {
         'type': 'object',
-        'properties': {'question': {'type': 'string'}},
-      }
+        'properties': {
+          'question': {'type': 'string'},
+        },
+      },
     },
     {
       'name': 'watch_video',
-      'description': 'Understand the video that is playing. On YouTube it uses the full video (visuals + audio); '
+      'description':
+          'Understand the video that is playing. On YouTube it uses the full video (visuals + audio); '
           'on other sites it uses sampled frames only (no audio). Optional question; optional seconds (3-20, default 8).',
       'parameters': {
         'type': 'object',
@@ -160,31 +219,71 @@ Rules:
           'question': {'type': 'string'},
           'seconds': {'type': 'integer'},
         },
-      }
+      },
     },
     {
       'name': 'listen_audio',
-      'description': 'Record the glasses microphone (ambient/room sound) and transcribe/describe it — NOT the page playback audio. Optional question; optional seconds (3-30, default 8).',
+      'description':
+          'Record the glasses microphone (ambient/room sound) and transcribe/describe it — NOT the page playback audio. Optional question; optional seconds (3-30, default 8).',
       'parameters': {
         'type': 'object',
         'properties': {
           'question': {'type': 'string'},
           'seconds': {'type': 'integer'},
         },
+      },
+    },
+    {
+      'name': 'see_camera',
+      'description':
+          'Take a photo with the glasses world-facing camera and ask Gemini what the wearer is looking at. Use for objects, signs, documents, scenes or "what is in front of me?". Optional question focuses the analysis.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'question': {'type': 'string'},
+        },
+      },
+    },
+    {
+      'name': 'watch_camera',
+      'description':
+          'Observe the world-facing camera over a few seconds (chronological frames) and describe movement/change/action. Use for "what is happening?" rather than a still object. Optional seconds 3-15 and question.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'question': {'type': 'string'},
+          'seconds': {'type': 'integer'},
+        },
+      },
+    },
+    {
+      'name': 'run_shell',
+      'description': 'Run ONE allowlisted Android toybox command inside the private agent workspace. Use for local file inspection/processing when list_files/read_file/write_file are insufficient. Allowed examples: pwd, ls, cat, cp, mv, mkdir, touch, head, tail, grep, sed, wc, sort, uniq, find, ps, date, sha256sum. No pipes, redirects, shell operators, absolute paths, .. traversal or access outside the workspace. For multi-step work call run_shell repeatedly, or write a file and inspect the result. Do not use this for network access; use download_file.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'command': {'type': 'string'},
+          'timeout_ms': {'type': 'integer'},
+        },
+        'required': ['command']
       }
     },
     {
       'name': 'list_files',
-      'description': 'List files/folders in the private workspace (a sandboxed folder on the glasses). '
+      'description':
+          'List files/folders in the private workspace (a sandboxed folder on the glasses). '
           'Use to see what has been saved before reading/writing. path is a folder relative to the workspace root (empty = root).',
       'parameters': {
         'type': 'object',
-        'properties': {'path': {'type': 'string'}},
-      }
+        'properties': {
+          'path': {'type': 'string'},
+        },
+      },
     },
     {
       'name': 'read_file',
-      'description': 'Read a file from the workspace. Text files return their content; '
+      'description':
+          'Read a file from the workspace. Text files return their content; '
           'images/audio/video are understood via Gemini and a description is returned (optional question focuses it). '
           'Combine with download_file (fetch something first) or write_file (read back what you saved).',
       'parameters': {
@@ -193,12 +292,13 @@ Rules:
           'path': {'type': 'string'},
           'question': {'type': 'string'},
         },
-        'required': ['path']
-      }
+        'required': ['path'],
+      },
     },
     {
       'name': 'write_file',
-      'description': 'Create or overwrite a text file in the workspace (set append=true to add to the end). '
+      'description':
+          'Create or overwrite a text file in the workspace (set append=true to add to the end). '
           'Use to save notes, transcripts, or results the user asked to keep. path is relative to the workspace root.',
       'parameters': {
         'type': 'object',
@@ -207,21 +307,24 @@ Rules:
           'content': {'type': 'string'},
           'append': {'type': 'boolean'},
         },
-        'required': ['path', 'content']
-      }
+        'required': ['path', 'content'],
+      },
     },
     {
       'name': 'delete_file',
       'description': 'Delete a file (or folder) from the workspace.',
       'parameters': {
         'type': 'object',
-        'properties': {'path': {'type': 'string'}},
-        'required': ['path']
-      }
+        'properties': {
+          'path': {'type': 'string'},
+        },
+        'required': ['path'],
+      },
     },
     {
       'name': 'download_file',
-      'description': 'Download an http/https URL into the workspace (size-capped). '
+      'description':
+          'Download an http/https URL into the workspace (size-capped). '
           'Use to fetch an image/audio/video/document, THEN read_file it to understand its contents, '
           'or to save something for the user. path is the destination filename (empty = derive from URL).',
       'parameters': {
@@ -230,17 +333,19 @@ Rules:
           'url': {'type': 'string'},
           'path': {'type': 'string'},
         },
-        'required': ['url']
-      }
+        'required': ['url'],
+      },
     },
     {
       'name': 'done',
       'description': 'Finish and report to the user.',
       'parameters': {
         'type': 'object',
-        'properties': {'message': {'type': 'string'}},
-        'required': ['message']
-      }
+        'properties': {
+          'message': {'type': 'string'},
+        },
+        'required': ['message'],
+      },
     },
   ];
 
@@ -266,40 +371,50 @@ Rules:
       {
         'role': 'user',
         'parts': [
-          {'text': preamble}
-        ]
+          {'text': preamble},
+        ],
       },
       // Prior turns of this session (spoken replies only) for continuity.
       if (historyEnabled) ...conversation,
       {
         'role': 'user',
         'parts': [
-          {'text': 'User command: $command'}
-        ]
-      }
+          {'text': 'User command: $command'},
+        ],
+      },
     ];
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 20);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 20);
     try {
       for (var step = 0; step < _maxSteps; step++) {
         final body = jsonEncode({
           'contents': contents,
           'tools': [
-            {'function_declarations': _tools}
+            {'function_declarations': _tools},
           ],
           'generationConfig': {'temperature': 0, 'maxOutputTokens': 800},
         });
-        final req = await client.postUrl(Uri.parse(
-            'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$key'));
+        final req = await client.postUrl(
+          Uri.parse(
+            'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$key',
+          ),
+        );
         req.headers.contentType = ContentType.json;
         req.write(body);
         final res = await req.close().timeout(const Duration(seconds: 60));
         final text = await res.transform(utf8.decoder).join();
         if (res.statusCode != 200) {
-          final msg = (jsonDecode(text)['error']?['message'] ?? 'HTTP ${res.statusCode}').toString();
-          throw StateError('Gemini: ${msg.length > 90 ? msg.substring(0, 90) : msg}');
+          final msg =
+              (jsonDecode(text)['error']?['message'] ??
+                      'HTTP ${res.statusCode}')
+                  .toString();
+          throw StateError(
+            'Gemini: ${msg.length > 90 ? msg.substring(0, 90) : msg}',
+          );
         }
         final j = jsonDecode(text);
-        final parts = (j['candidates']?[0]?['content']?['parts'] as List?) ?? const [];
+        final parts =
+            (j['candidates']?[0]?['content']?['parts'] as List?) ?? const [];
         if (parts.isEmpty) return 'No answer from the model';
         // Keep the model turn (function calls included) in the transcript.
         contents.add({'role': 'model', 'parts': parts});
@@ -322,7 +437,8 @@ Rules:
         for (final c in calls) {
           final name = (c['functionCall']['name'] ?? '').toString();
           final args = Map<String, dynamic>.from(
-              (c['functionCall']['args'] as Map?) ?? const {});
+            (c['functionCall']['args'] as Map?) ?? const {},
+          );
           if (name == 'done') {
             final msg = (args['message'] ?? 'Done').toString();
             _log({'run': runId, 'step': step, 'tool': 'done', 'result': msg});
@@ -336,30 +452,44 @@ Rules:
           // arguments, repeats and hangs are rejected here and reported back to
           // the model as a normal tool result so it can correct itself.
           if (!_toolNames.contains(name)) {
-            out = {'error': 'unknown tool $name; use one of ${_toolNames.join(', ')}'};
+            out = {
+              'error':
+                  'unknown tool $name; use one of ${_toolNames.join(', ')}',
+            };
           } else if (name == 'click' &&
               args['index'] == null &&
               (args['text'] ?? '').toString().trim().isEmpty) {
             out = {'error': 'click needs index or text; call read_page first'};
-          } else if (name == 'type' && (args['text'] ?? '').toString().isEmpty) {
+          } else if (name == 'type' &&
+              (args['text'] ?? '').toString().isEmpty) {
             out = {'error': 'type needs text'};
-          } else if (name == 'navigate' && (args['url'] ?? '').toString().trim().isEmpty) {
+          } else if (name == 'navigate' &&
+              (args['url'] ?? '').toString().trim().isEmpty) {
             out = {'error': 'navigate needs url'};
           } else if (signature == lastCall && name != 'read_page') {
-            out = {'error': 'same call repeated with no effect; try another step or call done'};
+            out = {
+              'error':
+                  'same call repeated with no effect; try another step or call done',
+            };
           } else if (gen != _generation) {
             return 'Cancelled';
           } else {
             // Multimodal tools record audio + call Gemini vision — allow longer.
-            final toolMs = (name == 'watch_video' ||
+            final toolMs =
+                (name == 'watch_video' ||
+                    name == 'watch_camera' ||
                     name == 'listen_audio' ||
                     name == 'download_file' ||
                     name == 'read_file')
                 ? 90000
-                : (name == 'see_page' ? 40000 : _maxToolMs);
+                : ((name == 'see_page' || name == 'see_camera')
+                      ? 40000
+                      : _maxToolMs);
             try {
-              out = await runTool(name, args)
-                  .timeout(Duration(milliseconds: toolMs));
+              out = await runTool(
+                name,
+                args,
+              ).timeout(Duration(milliseconds: toolMs));
             } on TimeoutException {
               out = {'error': 'tool timed out'};
             } catch (e) {
@@ -378,7 +508,7 @@ Rules:
             'result': _clip(out),
           });
           responses.add({
-            'functionResponse': {'name': name, 'response': out}
+            'functionResponse': {'name': name, 'response': out},
           });
         }
         contents.add({'role': 'user', 'parts': responses});
@@ -394,8 +524,18 @@ Rules:
   /// continuity, then return the reply unchanged. Only real answers are kept.
   static String _remember(String command, String reply) {
     if (historyEnabled) {
-      conversation.add({'role': 'user', 'parts': [{'text': command}]});
-      conversation.add({'role': 'model', 'parts': [{'text': reply}]});
+      conversation.add({
+        'role': 'user',
+        'parts': [
+          {'text': command},
+        ],
+      });
+      conversation.add({
+        'role': 'model',
+        'parts': [
+          {'text': reply},
+        ],
+      });
       // Keep memory bounded (last ~12 turns).
       if (conversation.length > 24) {
         conversation.removeRange(0, conversation.length - 24);

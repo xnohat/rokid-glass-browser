@@ -599,6 +599,26 @@ class MainActivity : FlutterActivity() {
                 "filesDir" -> {
                     result.success(filesDir.absolutePath)
                 }
+                "capturePhoto" -> {
+                    // World-facing camera still capture -> JPEG bytes for Gemini.
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+                        != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        requestPermissions(arrayOf(android.Manifest.permission.CAMERA), 202)
+                        result.error("no_permission", "Camera permission not granted yet; try again", null)
+                    } else {
+                        val maxDim = (call.argument<Int>("maxDim")) ?: 1280
+                        try {
+                            CameraHelper(this).capturePhoto(maxDim) { bytes ->
+                                runOnUiThread {
+                                    if (bytes != null && bytes.isNotEmpty()) result.success(bytes)
+                                    else result.error("capture_failed", "Camera capture failed", null)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            result.error("capture_failed", e.message, null)
+                        }
+                    }
+                }
                 "cursorScreenPos" -> {
                     // Actual on-screen centre of the cursor dot in window logical px.
                     val cv = cursorView

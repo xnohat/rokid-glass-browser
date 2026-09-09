@@ -19,6 +19,68 @@ class AgentVision {
 
   static const _visionModel = 'gemini-2.5-flash';
 
+  Future<Uint8List> _cameraPhoto({int maxDim = 1280}) async {
+    final bytes = await _channel.invokeMethod<Uint8List>(
+      'capturePhoto',
+      {'maxDim': maxDim},
+    );
+    if (bytes == null || bytes.isEmpty) {
+      throw StateError('Camera capture failed');
+    }
+    return bytes;
+  }
+
+  /// Take a world-facing camera photo and understand it with Gemini.
+  Future<String> seeCamera(String question) async {
+    final key = await VoiceAsr.loadKey();
+    if (key.isEmpty) {
+      throw StateError('No Gemini API key (set it in the web remote)');
+    }
+    final jpeg = await _cameraPhoto();
+    final prompt = question.trim().isEmpty
+        ? 'This photo is from the glasses world-facing camera. Describe what '
+            "the wearer is looking at, including readable text. Answer in the user's language."
+        : question.trim();
+    return _generate(key, [
+      {'text': prompt},
+      {
+        'inline_data': {'mime_type': 'image/jpeg', 'data': base64Encode(jpeg)}
+      },
+    ]);
+  }
+
+  /// Sample camera photos over time and describe changes/actions as a short clip.
+  Future<String> watchCamera(String question, {int seconds = 6}) async {
+    final key = await VoiceAsr.loadKey();
+    if (key.isEmpty) {
+      throw StateError('No Gemini API key (set it in the web remote)');
+    }
+    final duration = seconds.clamp(3, 15);
+    final count = duration <= 6 ? 3 : (duration <= 10 ? 4 : 6);
+    final gap = (duration * 1000 / count).round();
+    final frames = <Uint8List>[];
+    for (var i = 0; i < count; i++) {
+      frames.add(await _cameraPhoto(maxDim: 960));
+      if (i < count - 1) {
+        await Future<void>.delayed(Duration(milliseconds: gap));
+      }
+    }
+    final parts = <Map<String, dynamic>>[
+      {
+        'text': question.trim().isEmpty
+            ? 'These are chronological photos from the glasses world-facing '
+                'camera over about $duration seconds. Describe what the wearer '
+                "saw and what changed/happened. Answer in the user's language."
+            : '${question.trim()} (Chronological world-camera frames.)',
+      },
+      for (final f in frames)
+        {
+          'inline_data': {'mime_type': 'image/jpeg', 'data': base64Encode(f)}
+        },
+    ];
+    return _generate(key, parts);
+  }
+
   /// Describe what is currently visible on the glasses (image understanding).
   Future<String> seePage(String question) async {
     final key = await VoiceAsr.loadKey();

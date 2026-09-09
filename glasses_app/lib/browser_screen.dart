@@ -61,8 +61,10 @@ class _BrowserScreenState extends State<BrowserScreen>
   late final AgentSpeaker _speaker = AgentSpeaker(_methodChannel);
   late final AgentVision _vision = AgentVision(
     _methodChannel,
-    (w, h) => _methodChannel
-        .invokeMethod<Uint8List>('captureFrame', {'maxWidth': w, 'maxHeight': h}),
+    (w, h) => _methodChannel.invokeMethod<Uint8List>('captureFrame', {
+      'maxWidth': w,
+      'maxHeight': h,
+    }),
   );
   late final AgentFiles _files = AgentFiles(
     _vision,
@@ -140,7 +142,8 @@ class _BrowserScreenState extends State<BrowserScreen>
   bool _manualHudHidden = false;
   bool _editingText = false;
   bool _autoVideoFullscreen = false;
-  bool get _videoFullscreen => _manualHudHidden || _autoVideoFullscreen || _editingText;
+  bool get _videoFullscreen =>
+      _manualHudHidden || _autoVideoFullscreen || _editingText;
   int _lastGestureMs = 0; // debounce for touchpad swipes
   static const _gestureDebounceMs = 700;
   // Touchpad focus-navigation: the Rokid pad emits PAIRED keys for one swipe —
@@ -282,117 +285,122 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   void _initWebView() {
     // onPermissionRequest: grant in-page getUserMedia (mic) so voice search works.
-    _webController = WebViewController(
-      onPermissionRequest: (request) {
-        // Only microphone/camera capture is granted (for voice search & ASR);
-        // deny everything else (MIDI, protected media id, geolocation prompts).
-        const audioVideo = {
-          WebViewPermissionResourceType.microphone,
-          WebViewPermissionResourceType.camera,
-        };
-        if (request.types.any(audioVideo.contains)) {
-          request.grant();
-        } else {
-          request.deny();
-        }
-      },
-    )
-      ..setJavaScriptMode(JavaScriptMode.unrestricted)
-      ..addJavaScriptChannel(
-        'RokidInput',
-        onMessageReceived: (msg) {
-          if (!mounted) return;
-          final editing = msg.message == '1';
-          if (_editingText != editing) {
-            setState(() {
-              _editingText = editing;
-              // Field focused by the glasses cursor -> compact text keyboard.
-              if (editing && !_showUrlKeyboard) _showTextKeyboard = true;
-              if (!editing) _showTextKeyboard = false;
-            });
-            _applyHudInset(fullscreen: _videoFullscreen);
-          }
-        },
-      )
-      ..addJavaScriptChannel(
-        'RokidFS',
-        onMessageReceived: (msg) {
-          // The page reports a video going (near-)fullscreen; hide the HUD AND drop
-          // the in-page HUD inset so the video reaches the very top edge.
-          final fs = msg.message == '1';
-          if (mounted && fs != _autoVideoFullscreen) {
-            final before = _videoFullscreen;
-            setState(() => _autoVideoFullscreen = fs);
-            // Only touch the inset when the EFFECTIVE hidden state actually changed
-            // (so a delayed auto '0' can't restore the inset while manually hidden).
-            if (_videoFullscreen != before) {
-              _applyHudInset(fullscreen: _videoFullscreen);
-            }
-          }
-        },
-      )
-      ..setBackgroundColor(
-          _visualMode == 'normal' ? _kBlack : const Color(0x00000000))
-      ..setUserAgent(
-        'Mozilla/5.0 (Linux; Android 12; Pixel 6) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/120.0.0.0 Mobile Safari/537.36',
-      )
-      ..setNavigationDelegate(
-        NavigationDelegate(
-          onNavigationRequest: (request) {
-            final scheme = Uri.tryParse(request.url)?.scheme ?? '';
-            if (scheme == 'http' || scheme == 'https' || scheme == 'about') {
-              return NavigationDecision.navigate;
-            }
-            return NavigationDecision.prevent;
-          },
-          // SPA sites (YouTube, Facebook…) navigate via History pushState without
-          // firing onPageFinished, so canGoBack/Forward would never refresh and the
-          // phone's Back/Forward buttons stayed greyed out. onUrlChange fires on
-          // those in-app route changes too — re-sync the nav state here.
-          onUrlChange: (change) {
-            final u = change.url;
-            if (u != null && u.isNotEmpty) _refreshNavState(url: u);
-          },
-          onPageStarted: (url) {
-            setState(() {
-              _url = url;
-              _loading = true;
-              _theaterMode = false;
-              _autoVideoFullscreen =
-                  false; // reset auto; keep the manual choice
-            });
-            _lastNavMs = 0; // reset touchpad focus-nav coalescing on navigation
-            // Paint the page dark IMMEDIATELY (before content renders) so a bright
-            // white background never flashes onto the waveguide — the white flash is
-            // what causes both the flashing and the heat on these glasses.
-            // Dark mode is handled by the native WebView forceDark (algorithmic
-            // USER_AGENT darkening) — no CSS invert needed, which avoids the extra
-            // repaint/flashing. Just paint the base dark so there's no white flash
-            // before the first frame.
-            if (_isDark) {
-              _webController
-                  .runJavaScript(
-                    "document.documentElement&&document.documentElement.style"
-                    ".setProperty('background','#000','important');",
-                  )
-                  .catchError((_) {});
-            }
-            _sendState(url: url, loading: true);
-            if (!_webViewConfigured) {
-              _startConfigureRetry();
-            }
-          },
-          onPageFinished: (url) async {
-            unawaited(_urlHistory.record(url));
-            // Patch matchMedia + setForceDark BEFORE the viewport change below,
-            // so Google's layout-triggered re-check of prefers-color-scheme
-            // already sees our override and doesn't switch to light mode.
-            await _applyTheme(_isDark);
+    _webController =
+        WebViewController(
+            onPermissionRequest: (request) {
+              // Only microphone/camera capture is granted (for voice search & ASR);
+              // deny everything else (MIDI, protected media id, geolocation prompts).
+              const audioVideo = {
+                WebViewPermissionResourceType.microphone,
+                WebViewPermissionResourceType.camera,
+              };
+              if (request.types.any(audioVideo.contains)) {
+                request.grant();
+              } else {
+                request.deny();
+              }
+            },
+          )
+          ..setJavaScriptMode(JavaScriptMode.unrestricted)
+          ..addJavaScriptChannel(
+            'RokidInput',
+            onMessageReceived: (msg) {
+              if (!mounted) return;
+              final editing = msg.message == '1';
+              if (_editingText != editing) {
+                setState(() {
+                  _editingText = editing;
+                  // Field focused by the glasses cursor -> compact text keyboard.
+                  if (editing && !_showUrlKeyboard) _showTextKeyboard = true;
+                  if (!editing) _showTextKeyboard = false;
+                });
+                _applyHudInset(fullscreen: _videoFullscreen);
+              }
+            },
+          )
+          ..addJavaScriptChannel(
+            'RokidFS',
+            onMessageReceived: (msg) {
+              // The page reports a video going (near-)fullscreen; hide the HUD AND drop
+              // the in-page HUD inset so the video reaches the very top edge.
+              final fs = msg.message == '1';
+              if (mounted && fs != _autoVideoFullscreen) {
+                final before = _videoFullscreen;
+                setState(() => _autoVideoFullscreen = fs);
+                // Only touch the inset when the EFFECTIVE hidden state actually changed
+                // (so a delayed auto '0' can't restore the inset while manually hidden).
+                if (_videoFullscreen != before) {
+                  _applyHudInset(fullscreen: _videoFullscreen);
+                }
+              }
+            },
+          )
+          ..setBackgroundColor(
+            _visualMode == 'normal' ? _kBlack : const Color(0x00000000),
+          )
+          ..setUserAgent(
+            'Mozilla/5.0 (Linux; Android 12; Pixel 6) '
+            'AppleWebKit/537.36 (KHTML, like Gecko) '
+            'Chrome/120.0.0.0 Mobile Safari/537.36',
+          )
+          ..setNavigationDelegate(
+            NavigationDelegate(
+              onNavigationRequest: (request) {
+                final scheme = Uri.tryParse(request.url)?.scheme ?? '';
+                if (scheme == 'http' ||
+                    scheme == 'https' ||
+                    scheme == 'about') {
+                  return NavigationDecision.navigate;
+                }
+                return NavigationDecision.prevent;
+              },
+              // SPA sites (YouTube, Facebook…) navigate via History pushState without
+              // firing onPageFinished, so canGoBack/Forward would never refresh and the
+              // phone's Back/Forward buttons stayed greyed out. onUrlChange fires on
+              // those in-app route changes too — re-sync the nav state here.
+              onUrlChange: (change) {
+                final u = change.url;
+                if (u != null && u.isNotEmpty) _refreshNavState(url: u);
+              },
+              onPageStarted: (url) {
+                setState(() {
+                  _url = url;
+                  _loading = true;
+                  _theaterMode = false;
+                  _autoVideoFullscreen =
+                      false; // reset auto; keep the manual choice
+                });
+                _lastNavMs =
+                    0; // reset touchpad focus-nav coalescing on navigation
+                // Paint the page dark IMMEDIATELY (before content renders) so a bright
+                // white background never flashes onto the waveguide — the white flash is
+                // what causes both the flashing and the heat on these glasses.
+                // Dark mode is handled by the native WebView forceDark (algorithmic
+                // USER_AGENT darkening) — no CSS invert needed, which avoids the extra
+                // repaint/flashing. Just paint the base dark so there's no white flash
+                // before the first frame.
+                if (_isDark) {
+                  _webController
+                      .runJavaScript(
+                        "document.documentElement&&document.documentElement.style"
+                        ".setProperty('background','#000','important');",
+                      )
+                      .catchError((_) {});
+                }
+                _sendState(url: url, loading: true);
+                if (!_webViewConfigured) {
+                  _startConfigureRetry();
+                }
+              },
+              onPageFinished: (url) async {
+                unawaited(_urlHistory.record(url));
+                // Patch matchMedia + setForceDark BEFORE the viewport change below,
+                // so Google's layout-triggered re-check of prefers-color-scheme
+                // already sees our override and doesn't switch to light mode.
+                await _applyTheme(_isDark);
 
-            // Reset viewport and apply persistent zoom for the AR display
-            await _webController.runJavaScript('''
+                // Reset viewport and apply persistent zoom for the AR display
+                await _webController.runJavaScript('''
 (function(){
   var m=document.querySelector('meta[name="viewport"]');
   if(!m){m=document.createElement('meta');m.name='viewport';document.head.appendChild(m);}
@@ -444,57 +452,58 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
   }
 })();''');
-            // Re-apply the user's zoom level to the freshly loaded page (no-op at 100%).
-            if (_pageZoom != 1.0) _applyZoom();
-            // Reserve the HUD strip INSIDE the page (the WebView itself is full-screen
-            // and sits UNDER the address bar). A persistent scroll-padding + a spacer
-            // push the page content below the address bar so it is never overlapped,
-            // and because the WebView surface stays full-size there is no black band.
-            await _applyHudInset();
-            // Re-apply after zoom/viewport change triggers Google's layout re-check
-            await _applyTheme(_isDark);
-            // Re-apply the visual render mode (transparent/wireframe) on the new
-            // document — pure CSS, so SPA nodes inherit without re-injection.
-            if (_visualMode != 'normal') {
-              await _applyVisualMode();
-              // SPAs (Facebook) keep injecting styled nodes/stylesheets for a
-              // few seconds after "finished"; re-apply so our sheet stays last.
-              for (final ms in [600, 1500, 3000, 6000]) {
-                Future.delayed(Duration(milliseconds: ms), () {
-                  if (mounted && _visualMode != 'normal') _applyVisualMode();
-                });
-              }
-            }
-            // Dark mode: only sites that ship their OWN dark theme switch (WebView
-            // WEB_THEME_DARKENING_ONLY / prefers-color-scheme). Sites without a dark
-            // theme keep their original colors — no simulated/forced recoloring. The
-            // brightness slider handles glare/heat for bright pages.
+                // Re-apply the user's zoom level to the freshly loaded page (no-op at 100%).
+                if (_pageZoom != 1.0) _applyZoom();
+                // Reserve the HUD strip INSIDE the page (the WebView itself is full-screen
+                // and sits UNDER the address bar). A persistent scroll-padding + a spacer
+                // push the page content below the address bar so it is never overlapped,
+                // and because the WebView surface stays full-size there is no black band.
+                await _applyHudInset();
+                // Re-apply after zoom/viewport change triggers Google's layout re-check
+                await _applyTheme(_isDark);
+                // Re-apply the visual render mode (transparent/wireframe) on the new
+                // document — pure CSS, so SPA nodes inherit without re-injection.
+                if (_visualMode != 'normal') {
+                  await _applyVisualMode();
+                  // SPAs (Facebook) keep injecting styled nodes/stylesheets for a
+                  // few seconds after "finished"; re-apply so our sheet stays last.
+                  for (final ms in [600, 1500, 3000, 6000]) {
+                    Future.delayed(Duration(milliseconds: ms), () {
+                      if (mounted && _visualMode != 'normal')
+                        _applyVisualMode();
+                    });
+                  }
+                }
+                // Dark mode: only sites that ship their OWN dark theme switch (WebView
+                // WEB_THEME_DARKENING_ONLY / prefers-color-scheme). Sites without a dark
+                // theme keep their original colors — no simulated/forced recoloring. The
+                // brightness slider handles glare/heat for bright pages.
 
-            final title = await _webController.getTitle() ?? '';
-            final canGoBack = await _webController.canGoBack();
-            final canGoForward = await _webController.canGoForward();
-            if (mounted) {
-              setState(() {
-                _url = url;
-                _title = title.isNotEmpty ? title : 'ROKID AI AGENT';
-                _loading = false;
-                _canGoBack = canGoBack;
-                _canGoForward = canGoForward;
-              });
-            }
-            _sendState(
-              url: url,
-              title: title,
-              loading: false,
-              canGoBack: canGoBack,
-              canGoForward: canGoForward,
-            );
-          },
-          onWebResourceError: (_) {
-            if (mounted) setState(() => _loading = false);
-          },
-        ),
-      );
+                final title = await _webController.getTitle() ?? '';
+                final canGoBack = await _webController.canGoBack();
+                final canGoForward = await _webController.canGoForward();
+                if (mounted) {
+                  setState(() {
+                    _url = url;
+                    _title = title.isNotEmpty ? title : 'ROKID AI AGENT';
+                    _loading = false;
+                    _canGoBack = canGoBack;
+                    _canGoForward = canGoForward;
+                  });
+                }
+                _sendState(
+                  url: url,
+                  title: title,
+                  loading: false,
+                  canGoBack: canGoBack,
+                  canGoForward: canGoForward,
+                );
+              },
+              onWebResourceError: (_) {
+                if (mounted) setState(() => _loading = false);
+              },
+            ),
+          );
 
     // Enable mixed content and configure Android-specific settings
     if (defaultTargetPlatform == TargetPlatform.android) {
@@ -505,7 +514,6 @@ class _BrowserScreenState extends State<BrowserScreen>
       // Allow media (e.g. YouTube) to play without requiring a tap gesture
       android.setMediaPlaybackRequiresUserGesture(false);
     }
-
 
     setState(() => _webViewReady = true);
   }
@@ -749,7 +757,9 @@ class _BrowserScreenState extends State<BrowserScreen>
     final mode = _visualMode;
     // Make the WebView surface itself transparent (or opaque black in normal),
     // otherwise the native surface fill glows grey on the AR waveguide.
-    _methodChannel.invokeMethod('setWebViewTransparent', mode != 'normal').catchError((_) => null);
+    _methodChannel
+        .invokeMethod('setWebViewTransparent', mode != 'normal')
+        .catchError((_) => null);
     await _webController
         .runJavaScript('''
 (function(){
@@ -853,16 +863,32 @@ class _BrowserScreenState extends State<BrowserScreen>
         final size = MediaQuery.sizeOf(context);
         await _handleCommand({
           'action': 'cursor_drag_move',
-          'dx': (cmd['dx'] as num).toDouble() * size.width * _kRemotePadGain / 2.5,
-          'dy': (cmd['dy'] as num).toDouble() * size.height * _kRemotePadGain / 2.5,
+          'dx':
+              (cmd['dx'] as num).toDouble() *
+              size.width *
+              _kRemotePadGain /
+              2.5,
+          'dy':
+              (cmd['dy'] as num).toDouble() *
+              size.height *
+              _kRemotePadGain /
+              2.5,
         });
       case 'remote_cursor_move':
         if (!mounted) throw StateError('Screen is not active');
         final size = MediaQuery.sizeOf(context);
         await _handleCommand({
           'action': 'cursor_move',
-          'dx': (cmd['dx'] as num).toDouble() * size.width * _kRemotePadGain / 2.5,
-          'dy': (cmd['dy'] as num).toDouble() * size.height * _kRemotePadGain / 2.5,
+          'dx':
+              (cmd['dx'] as num).toDouble() *
+              size.width *
+              _kRemotePadGain /
+              2.5,
+          'dy':
+              (cmd['dy'] as num).toDouble() *
+              size.height *
+              _kRemotePadGain /
+              2.5,
         });
       case 'click':
         final x = (cmd['x'] as num?)?.toDouble();
@@ -914,7 +940,9 @@ class _BrowserScreenState extends State<BrowserScreen>
           if (nowMs - _agentListenStartMs < 1000) return;
           _agentListening = false;
           unawaited(
-            _methodChannel.invokeMethod('beep', {'kind': 'stop'}).catchError((_) => null),
+            _methodChannel
+                .invokeMethod('beep', {'kind': 'stop'})
+                .catchError((_) => null),
           );
           setState(() => _agentStatus = '⏳ Recognising…');
           try {
@@ -923,17 +951,23 @@ class _BrowserScreenState extends State<BrowserScreen>
             if (text.trim().isEmpty) {
               _agentConsole("⚠︎ Didn't catch that");
               _agentHideTimer?.cancel();
-              _agentHideTimer = Timer(const Duration(milliseconds: 2500),
-                  () => mounted ? setState(() => _agentPanelOpen = false) : null);
+              _agentHideTimer = Timer(
+                const Duration(milliseconds: 2500),
+                () => mounted ? setState(() => _agentPanelOpen = false) : null,
+              );
             } else {
               await _runAgentCommand(text.trim());
             }
           } catch (e) {
             setState(() => _agentStatus = null);
-            _agentConsole('⚠︎ ${e is StateError ? e.message : 'Recognition failed'}');
+            _agentConsole(
+              '⚠︎ ${e is StateError ? e.message : 'Recognition failed'}',
+            );
             _agentHideTimer?.cancel();
-            _agentHideTimer = Timer(const Duration(seconds: 4),
-                () => mounted ? setState(() => _agentPanelOpen = false) : null);
+            _agentHideTimer = Timer(
+              const Duration(seconds: 4),
+              () => mounted ? setState(() => _agentPanelOpen = false) : null,
+            );
           }
           return;
         }
@@ -1111,7 +1145,9 @@ class _BrowserScreenState extends State<BrowserScreen>
         // Overlays are hit-tested against where the dot is REALLY drawn.
         double ox = cx, oy = cy;
         try {
-          final pos = await _methodChannel.invokeMethod<List<dynamic>>('cursorScreenPos');
+          final pos = await _methodChannel.invokeMethod<List<dynamic>>(
+            'cursorScreenPos',
+          );
           if (pos != null && pos.length == 2) {
             ox = (pos[0] as num).toDouble();
             oy = (pos[1] as num).toDouble();
@@ -1124,14 +1160,17 @@ class _BrowserScreenState extends State<BrowserScreen>
           return;
         }
         if (_showTextKeyboard) {
-          final consumed = _textKbKey.currentState?.hitTest(Offset(ox, oy)) ?? false;
+          final consumed =
+              _textKbKey.currentState?.hitTest(Offset(ox, oy)) ?? false;
           if (consumed) return;
           // fell through: keyboard closed itself, continue as a page click
         }
         if (_showWebRemotePanel) {
           final panelActions = <String, VoidCallback?>{
             'start': _webRemote.running ? null : _startWebRemote,
-            'revoke': _webRemoteStatus == WebRemoteStatus.paired ? _revokeWebRemote : null,
+            'revoke': _webRemoteStatus == WebRemoteStatus.paired
+                ? _revokeWebRemote
+                : null,
             'stop': _webRemote.running ? _stopWebRemote : null,
             'exit': () {
               if (_confirmExit) {
@@ -1141,12 +1180,13 @@ class _BrowserScreenState extends State<BrowserScreen>
               }
             },
             'close': () => setState(() {
-                  _showWebRemotePanel = false;
-                  _confirmExit = false;
-                }),
+              _showWebRemotePanel = false;
+              _confirmExit = false;
+            }),
           };
           for (final entry in _panelKeys.entries) {
-            final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
+            final box =
+                entry.value.currentContext?.findRenderObject() as RenderBox?;
             if (box == null || !box.hasSize) continue;
             final origin = box.localToGlobal(Offset.zero);
             if ((origin & box.size).inflate(10).contains(Offset(ox, oy))) {
@@ -1172,11 +1212,33 @@ class _BrowserScreenState extends State<BrowserScreen>
             'address': () => setState(() => _showUrlKeyboard = true),
             'back': _canGoBack ? _goBack : null,
             'forward': _canGoForward ? () => _webController.goForward() : null,
-            'up': _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowUp'}) : null,
-            'down': _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowDown'}) : null,
-            'left': _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowLeft'}) : null,
-            'right': _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowRight'}) : null,
-            'stop': _loading ? () => _webController.runJavaScript('window.stop()') : null,
+            'up': _url.isNotEmpty
+                ? () => _handleCommand({
+                    'action': 'keyboard_key',
+                    'key': 'ArrowUp',
+                  })
+                : null,
+            'down': _url.isNotEmpty
+                ? () => _handleCommand({
+                    'action': 'keyboard_key',
+                    'key': 'ArrowDown',
+                  })
+                : null,
+            'left': _url.isNotEmpty
+                ? () => _handleCommand({
+                    'action': 'keyboard_key',
+                    'key': 'ArrowLeft',
+                  })
+                : null,
+            'right': _url.isNotEmpty
+                ? () => _handleCommand({
+                    'action': 'keyboard_key',
+                    'key': 'ArrowRight',
+                  })
+                : null,
+            'stop': _loading
+                ? () => _webController.runJavaScript('window.stop()')
+                : null,
             'reload': _url.isNotEmpty ? () => _webController.reload() : null,
             'exit': () {
               if (_confirmExit) {
@@ -1187,7 +1249,8 @@ class _BrowserScreenState extends State<BrowserScreen>
             },
           };
           for (final entry in _HudBar.toolKeys.entries) {
-            final box = entry.value.currentContext?.findRenderObject() as RenderBox?;
+            final box =
+                entry.value.currentContext?.findRenderObject() as RenderBox?;
             if (box == null || !box.hasSize) continue;
             final origin = box.localToGlobal(Offset.zero);
             if ((origin & box.size).inflate(6).contains(Offset(ox, oy))) {
@@ -1507,6 +1570,19 @@ class _BrowserScreenState extends State<BrowserScreen>
         _webRemote.publishAsrModel(await VoiceAsr.loadModel(), null);
       case 'agent_trace':
         _webRemote.publishAgentTrace(BrowserAgent.trace);
+      case 'agent_history':
+        _webRemote.publishAgentHistory(BrowserAgent.sessionHistory);
+      case 'agent_history_remove':
+        BrowserAgent.removeHistoryTurn((cmd['index'] as num?)?.toInt() ?? -1);
+        _webRemote.publishAgentHistory(BrowserAgent.sessionHistory);
+      case 'agent_history_clear':
+        BrowserAgent.clearConversation();
+        if (mounted)
+          setState(() {
+            _agentLog.clear();
+            _agentStatus = null;
+          });
+        _webRemote.publishAgentHistory(BrowserAgent.sessionHistory);
       case 'agent_run':
         unawaited(_runAgentCommand((cmd['text'] as String).trim()));
       case 'set_asr_model':
@@ -1544,6 +1620,7 @@ class _BrowserScreenState extends State<BrowserScreen>
           });
         }
         _webRemote.publishAgentSettings();
+        _webRemote.publishAgentHistory(BrowserAgent.sessionHistory);
       case 'history_list':
         _webRemote.publishHistory(_urlHistory.history);
       case 'history_remove':
@@ -1584,8 +1661,10 @@ class _BrowserScreenState extends State<BrowserScreen>
   /// widgets (HUD, panels, keyboard) are hit-tested in window space, so add
   /// the same offset to compare like with like.
   double _cursorOverlayY() => _cursorY;
+
   /// Cursor Y in WebView/page coordinates (WebView sits below the HUD).
-  double get _pageTop => (!_theaterMode && !_videoFullscreen && _url.isNotEmpty) ? _kHudHeight : 0;
+  double get _pageTop =>
+      (!_theaterMode && !_videoFullscreen && _url.isNotEmpty) ? _kHudHeight : 0;
   int get _cursorPageY => (_cursorY - _pageTop).round();
   int get _cursorPageX => _cursorX.round();
   double _cursorNativeOffsetY = 0;
@@ -1628,6 +1707,22 @@ class _BrowserScreenState extends State<BrowserScreen>
       setState(() => _showWebRemotePanel = !_showWebRemotePanel);
       return true;
     }
+    // When the agent console is visible, touchpad swipes review its history.
+    // New lines still auto-scroll to bottom; a manual swipe can go up/down.
+    if (_agentPanelOpen && _agentScroll.hasClients &&
+        (k == LogicalKeyboardKey.arrowRight ||
+            k == LogicalKeyboardKey.arrowDown ||
+            k == LogicalKeyboardKey.arrowLeft ||
+            k == LogicalKeyboardKey.arrowUp)) {
+      final forward = k == LogicalKeyboardKey.arrowRight ||
+          k == LogicalKeyboardKey.arrowDown;
+      final pos = _agentScroll.position;
+      final target = (pos.pixels + (forward ? 60 : -60))
+          .clamp(pos.minScrollExtent, pos.maxScrollExtent);
+      _agentScroll.animateTo(target,
+          duration: const Duration(milliseconds: 160), curve: Curves.easeOut);
+      return true;
+    }
     if (_showWebRemotePanel && _swipeScrollsPage) {
       // Scroll/focus mode: arrows traverse the panel's buttons.
       if (k == LogicalKeyboardKey.arrowRight ||
@@ -1643,7 +1738,9 @@ class _BrowserScreenState extends State<BrowserScreen>
       return false;
     }
     // In mouse mode the panel is driven by the cursor (fall through).
-    if (_url.isEmpty && !_showUrlKeyboard && !_showWebRemotePanel &&
+    if (_url.isEmpty &&
+        !_showUrlKeyboard &&
+        !_showWebRemotePanel &&
         (k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.select)) {
       setState(() => _showUrlKeyboard = true);
       return true;
@@ -1676,7 +1773,8 @@ class _BrowserScreenState extends State<BrowserScreen>
           _swipeStreak = 0;
         }
         _lastSwipeMs = now;
-        final base = (_mouseAxisVertical ? size.height : size.width) / _kPadSwipeDivisor;
+        final base =
+            (_mouseAxisVertical ? size.height : size.width) / _kPadSwipeDivisor;
         final stepPx = base * (1 + _swipeStreak * 0.65); // up to ~4.9x
         _glideCursor(
           _mouseAxisVertical ? 0 : (isForward ? stepPx : -stepPx),
@@ -2044,10 +2142,13 @@ class _BrowserScreenState extends State<BrowserScreen>
         });
       }
     }
+
     if (!_micActive) {
       try {
         await _asr.start();
-        _methodChannel.invokeMethod('beep', {'kind': 'start'}).catchError((_) {});
+        _methodChannel
+            .invokeMethod('beep', {'kind': 'start'})
+            .catchError((_) {});
         setState(() => _micActive = true);
         status('🎤 LISTENING… speak, then tap ⏹ to stop');
       } catch (e) {
@@ -2060,21 +2161,33 @@ class _BrowserScreenState extends State<BrowserScreen>
     status('⏳ Recognising (Gemini)…');
     try {
       final t = await _asr.stopAndTranscribe();
-      status(t.isEmpty ? 'Did not catch that, try again' : null, clearAfterMs: 2500);
+      status(
+        t.isEmpty ? 'Did not catch that, try again' : null,
+        clearAfterMs: 2500,
+      );
       return t;
     } catch (e) {
-      status(e is StateError ? e.message : 'Recognition error', clearAfterMs: 4000);
+      status(
+        e is StateError ? e.message : 'Recognition error',
+        clearAfterMs: 4000,
+      );
       return null;
     }
   }
 
   /// Executes one agent tool against the live page.
-  Future<Map<String, dynamic>> _runAgentTool(String name, Map<String, dynamic> args) async {
+  Future<Map<String, dynamic>> _runAgentTool(
+    String name,
+    Map<String, dynamic> args,
+  ) async {
     Future<void> settle([int ms = 900]) =>
         Future<void>.delayed(Duration(milliseconds: ms));
     switch (name) {
       case 'navigate':
-        await _handleCommand({'action': 'navigate', 'url': (args['url'] ?? '').toString()});
+        await _handleCommand({
+          'action': 'navigate',
+          'url': (args['url'] ?? '').toString(),
+        });
         await settle(2500);
         return {'ok': true, 'url': _url};
       case 'back':
@@ -2095,9 +2208,13 @@ class _BrowserScreenState extends State<BrowserScreen>
         final h = MediaQuery.sizeOf(context).height;
         switch (dir) {
           case 'top':
-            await _webController.runJavaScript('window.scrollTo({top:0,behavior:"smooth"})');
+            await _webController.runJavaScript(
+              'window.scrollTo({top:0,behavior:"smooth"})',
+            );
           case 'bottom':
-            await _webController.runJavaScript('window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"})');
+            await _webController.runJavaScript(
+              'window.scrollTo({top:document.body.scrollHeight,behavior:"smooth"})',
+            );
           case 'up':
             _scrollPage(0, -((small ? h / 4 : h * 0.8).round()));
           default:
@@ -2127,7 +2244,9 @@ class _BrowserScreenState extends State<BrowserScreen>
   return JSON.stringify({title:document.title,url:location.href,text:body,elements:out});
 })()''');
         try {
-          final decoded = jsonDecode(r is String ? jsonDecode(r) as String : r.toString());
+          final decoded = jsonDecode(
+            r is String ? jsonDecode(r) as String : r.toString(),
+          );
           return Map<String, dynamic>.from(decoded as Map);
         } catch (_) {
           return {'raw': r.toString()};
@@ -2154,7 +2273,10 @@ class _BrowserScreenState extends State<BrowserScreen>
         await settle(1200);
         return {'result': r.toString().replaceAll('"', ''), 'url': _url};
       case 'type':
-        await _handleCommand({'action': 'keyboard_type', 'text': (args['text'] ?? '').toString()});
+        await _handleCommand({
+          'action': 'keyboard_type',
+          'text': (args['text'] ?? '').toString(),
+        });
         await settle(400);
         return {'ok': true};
       case 'press_enter':
@@ -2179,10 +2301,16 @@ class _BrowserScreenState extends State<BrowserScreen>
             setState(() => _showWebRemotePanel = true);
             return {'ok': true};
           case 'transparent_on':
-            await _handleCommand({'action': 'set_visual_mode', 'mode': 'transparent'});
+            await _handleCommand({
+              'action': 'set_visual_mode',
+              'mode': 'transparent',
+            });
             return {'ok': true};
           case 'transparent_off':
-            await _handleCommand({'action': 'set_visual_mode', 'mode': 'normal'});
+            await _handleCommand({
+              'action': 'set_visual_mode',
+              'mode': 'normal',
+            });
             return {'ok': true};
           case 'dark_on':
             setState(() => _isDark = true);
@@ -2210,10 +2338,16 @@ class _BrowserScreenState extends State<BrowserScreen>
             _applyZoom();
             return {'ok': true, 'zoom': _pageZoom};
           case 'brighter':
-            await _handleCommand({'action': 'set_dim', 'value': (_dim - 0.15).clamp(0.0, 0.8)});
+            await _handleCommand({
+              'action': 'set_dim',
+              'value': (_dim - 0.15).clamp(0.0, 0.8),
+            });
             return {'ok': true};
           case 'dimmer':
-            await _handleCommand({'action': 'set_dim', 'value': (_dim + 0.15).clamp(0.0, 0.8)});
+            await _handleCommand({
+              'action': 'set_dim',
+              'value': (_dim + 0.15).clamp(0.0, 0.8),
+            });
             return {'ok': true};
           case 'volume_up':
             await _handleCommand({'action': 'volume_up'});
@@ -2230,9 +2364,17 @@ class _BrowserScreenState extends State<BrowserScreen>
           // A model-set confirm flag is not real user consent, so we refuse and
           // tell the user to do it themselves in the web-remote settings.
           case 'clear_session':
-            return {'refused': true, 'message': 'For safety, clearing the session (which logs you out) must be done by the user in the web remote settings, not by the agent.'};
+            return {
+              'refused': true,
+              'message':
+                  'For safety, clearing the session (which logs you out) must be done by the user in the web remote settings, not by the agent.',
+            };
           case 'wifi_on':
-            return {'refused': true, 'message': 'For safety, Wi-Fi changes must be done by the user, not by the agent.'};
+            return {
+              'refused': true,
+              'message':
+                  'For safety, Wi-Fi changes must be done by the user, not by the agent.',
+            };
           default:
             return {'error': 'unknown app action $a'};
         }
@@ -2252,6 +2394,17 @@ class _BrowserScreenState extends State<BrowserScreen>
           seconds: (args['seconds'] is int) ? args['seconds'] as int : 8,
         );
         return {'ok': true, 'observation': desc};
+      case 'see_camera':
+        final desc = await _vision.seeCamera(
+          (args['question'] ?? '').toString(),
+        );
+        return {'ok': true, 'observation': desc};
+      case 'watch_camera':
+        final desc = await _vision.watchCamera(
+          (args['question'] ?? '').toString(),
+          seconds: (args['seconds'] is int) ? args['seconds'] as int : 6,
+        );
+        return {'ok': true, 'observation': desc};
       case 'list_files':
         return await _files.listDir((args['path'] ?? '').toString());
       case 'read_file':
@@ -2267,6 +2420,13 @@ class _BrowserScreenState extends State<BrowserScreen>
         );
       case 'delete_file':
         return await _files.deleteFile((args['path'] ?? '').toString());
+      case 'run_shell':
+        return await _files.runShell(
+          (args['command'] ?? '').toString(),
+          timeoutMs: args['timeoutMs'] is int
+              ? args['timeoutMs'] as int
+              : 10000,
+        );
       case 'download_file':
         return await _files.download(
           (args['url'] ?? '').toString(),
@@ -2314,7 +2474,8 @@ class _BrowserScreenState extends State<BrowserScreen>
     setState(() {
       _agentPanelOpen = true;
       // LISTENING is a live STATUS line, not chat history — keep prior turns.
-      _agentStatus = '🎤 LISTENING…  (hold again = restart · double-tap = cancel)';
+      _agentStatus =
+          '🎤 LISTENING…  (hold again = restart · double-tap = cancel)';
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_agentScroll.hasClients) {
@@ -2326,14 +2487,19 @@ class _BrowserScreenState extends State<BrowserScreen>
       _agentStarting = false;
       _agentListening = true;
       _agentListenStartMs = DateTime.now().millisecondsSinceEpoch;
-      unawaited(_methodChannel
-          .invokeMethod('beep', {'kind': 'start'}).catchError((_) => null));
+      unawaited(
+        _methodChannel
+            .invokeMethod('beep', {'kind': 'start'})
+            .catchError((_) => null),
+      );
     } catch (_) {
       _agentStarting = false;
       _agentListening = false;
       _agentConsole('⚠︎ Cannot open microphone');
-      _agentHideTimer = Timer(const Duration(seconds: 4),
-          () => mounted ? setState(() => _agentPanelOpen = false) : null);
+      _agentHideTimer = Timer(
+        const Duration(seconds: 4),
+        () => mounted ? setState(() => _agentPanelOpen = false) : null,
+      );
     }
   }
 
@@ -2342,7 +2508,8 @@ class _BrowserScreenState extends State<BrowserScreen>
   Future<void> _cancelAgent() async {
     // Active also covers: speaking the reply, or the panel lingering after a
     // run (the 10s grace) — a double-tap there must cancel and close at once.
-    final wasActive = _agentListening ||
+    final wasActive =
+        _agentListening ||
         _agentStarting ||
         _agent.busy ||
         _agentStatus != null ||
@@ -2358,8 +2525,11 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
     if (!mounted) return;
     if (wasActive) {
-      unawaited(_methodChannel
-          .invokeMethod('beep', {'kind': 'stop'}).catchError((_) => null));
+      unawaited(
+        _methodChannel
+            .invokeMethod('beep', {'kind': 'stop'})
+            .catchError((_) => null),
+      );
       // Hide immediately; do not linger.
       setState(() {
         _agentStatus = null;
@@ -2378,7 +2548,8 @@ class _BrowserScreenState extends State<BrowserScreen>
       _agentStatus = null; // recognition finished; back to history view
       // Keep this session's chat history: append, don't clear, so reopening the
       // console shows the earlier turns. (Cleared only on app close / Clear.)
-      if (_agentLog.length > 200) _agentLog.removeRange(0, _agentLog.length - 200);
+      if (_agentLog.length > 200)
+        _agentLog.removeRange(0, _agentLog.length - 200);
       _agentLog.add('🗣 $command');
     });
     _scrollAgentToBottom();
@@ -2401,7 +2572,8 @@ class _BrowserScreenState extends State<BrowserScreen>
     // Keep the window up while it is still speaking, then linger 10s more.
     _agentHideTimer?.cancel();
     _agentHideTimer = Timer(Duration(milliseconds: spokenMs + 10000), () {
-      if (mounted && epoch == _agentEpoch) setState(() => _agentPanelOpen = false);
+      if (mounted && epoch == _agentEpoch)
+        setState(() => _agentPanelOpen = false);
     });
   }
 
@@ -2436,7 +2608,8 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   // Panel buttons reachable by the glasses cursor (mouse mode).
   final Map<String, GlobalKey> _panelKeys = {
-    for (final n in ['start', 'revoke', 'stop', 'exit', 'close']) n: GlobalKey(),
+    for (final n in ['start', 'revoke', 'stop', 'exit', 'close'])
+      n: GlobalKey(),
   };
 
   Widget _buildWebRemoteOwnerPanel() {
@@ -2447,130 +2620,130 @@ class _BrowserScreenState extends State<BrowserScreen>
     // everything. The panel card itself stays opaque; the rest shows through.
     return Positioned.fill(
       child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Container(
-              width: 400,
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D160D),
-                border: Border.all(color: const Color(0xFF477047)),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: Container(
+            width: 400,
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: const Color(0xFF0D160D),
+              border: Border.all(color: const Color(0xFF477047)),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'WEB REMOTE · SAME WI-FI',
+                  style: TextStyle(
+                    color: _kGreen,
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (!running) ...[
                   const Text(
-                    'WEB REMOTE · SAME WI-FI',
-                    style: TextStyle(
-                      color: _kGreen,
-                      fontSize: 13,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                    ),
+                    'The server only runs after you press Start. Use a trusted Wi-Fi network.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: _kSoftGreen, fontSize: 12),
                   ),
                   const SizedBox(height: 12),
-                  if (!running) ...[
-                    const Text(
-                      'The server only runs after you press Start. Use a trusted Wi-Fi network.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: _kSoftGreen, fontSize: 12),
-                    ),
-                    const SizedBox(height: 12),
-                    FilledButton(
-                      key: _panelKeys['start'],
-                      autofocus: true,
-                      onPressed: _startWebRemote,
-                      child: const Text('START WEB REMOTE'),
-                    ),
-                  ] else ...[
-                    Text(
-                      paired ? 'CONNECTED' : 'WAITING FOR PHONE',
-                      style: TextStyle(
-                        color: paired ? _kGreen : const Color(0xFFFFCC66),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Open this address on your phone:',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                    SelectableText(
-                      _webRemote.address,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 16),
-                    ),
-                    if (!paired)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 10),
-                        child: Text(
-                          'Open the address on a phone on the same Wi-Fi to connect. Fixed port 8765 — bookmark it.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.white60, fontSize: 11),
-                        ),
-                      ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 8,
-                      alignment: WrapAlignment.center,
-                      children: [
-                        if (paired)
-                          OutlinedButton(
-                            key: _panelKeys['revoke'],
-                            onPressed: _revokeWebRemote,
-                            child: const Text('REVOKE'),
-                          ),
-                        FilledButton.tonal(
-                          key: _panelKeys['stop'],
-                          onPressed: _stopWebRemote,
-                          child: const Text('STOP'),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (_webRemoteError != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      _webRemoteError!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Color(0xFFFF7777),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  if (_confirmExit)
-                    const Text(
-                      'Hold the button again or choose CONFIRM to exit',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Color(0xFFFFCC66), fontSize: 11),
-                    ),
-                  TextButton(
-                    key: _panelKeys['exit'],
-                    onPressed: () {
-                      if (_confirmExit) {
-                        _handleCommand({'action': 'exit_app'});
-                      } else {
-                        _armExitConfirm();
-                      }
-                    },
-                    child: Text(_confirmExit ? 'CONFIRM EXIT' : 'EXIT BROWSER'),
+                  FilledButton(
+                    key: _panelKeys['start'],
+                    autofocus: true,
+                    onPressed: _startWebRemote,
+                    child: const Text('START WEB REMOTE'),
                   ),
-                  TextButton(
-                    key: _panelKeys['close'],
-                    onPressed: () => setState(() {
-                      _showWebRemotePanel = false;
-                      _confirmExit = false;
-                    }),
-                    child: const Text('CLOSE'),
+                ] else ...[
+                  Text(
+                    paired ? 'CONNECTED' : 'WAITING FOR PHONE',
+                    style: TextStyle(
+                      color: paired ? _kGreen : const Color(0xFFFFCC66),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Open this address on your phone:',
+                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  SelectableText(
+                    _webRemote.address,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                  if (!paired)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 10),
+                      child: Text(
+                        'Open the address on a phone on the same Wi-Fi to connect. Fixed port 8765 — bookmark it.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white60, fontSize: 11),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      if (paired)
+                        OutlinedButton(
+                          key: _panelKeys['revoke'],
+                          onPressed: _revokeWebRemote,
+                          child: const Text('REVOKE'),
+                        ),
+                      FilledButton.tonal(
+                        key: _panelKeys['stop'],
+                        onPressed: _stopWebRemote,
+                        child: const Text('STOP'),
+                      ),
+                    ],
                   ),
                 ],
-              ),
+                if (_webRemoteError != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _webRemoteError!,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Color(0xFFFF7777),
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                if (_confirmExit)
+                  const Text(
+                    'Hold the button again or choose CONFIRM to exit',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Color(0xFFFFCC66), fontSize: 11),
+                  ),
+                TextButton(
+                  key: _panelKeys['exit'],
+                  onPressed: () {
+                    if (_confirmExit) {
+                      _handleCommand({'action': 'exit_app'});
+                    } else {
+                      _armExitConfirm();
+                    }
+                  },
+                  child: Text(_confirmExit ? 'CONFIRM EXIT' : 'EXIT BROWSER'),
+                ),
+                TextButton(
+                  key: _panelKeys['close'],
+                  onPressed: () => setState(() {
+                    _showWebRemotePanel = false;
+                    _confirmExit = false;
+                  }),
+                  child: const Text('CLOSE'),
+                ),
+              ],
             ),
           ),
         ),
+      ),
     );
   }
 
@@ -2602,7 +2775,9 @@ class _BrowserScreenState extends State<BrowserScreen>
           // unlit pixels emit NO light on the AR waveguide (true transparency).
           // Solid black still glows faintly grey, which is the "grey background"
           // users report. In normal mode keep opaque black.
-          backgroundColor: _visualMode == 'normal' ? _kBlack : Colors.transparent,
+          backgroundColor: _visualMode == 'normal'
+              ? _kBlack
+              : Colors.transparent,
           // Fill the ENTIRE display, including the area under the system
           // status/navigation bars (immersive). Without this the Scaffold shrinks
           // the body by the nav-bar inset, leaving an un-painted strip at the
@@ -2619,7 +2794,9 @@ class _BrowserScreenState extends State<BrowserScreen>
           body: Stack(
             children: [
               Positioned(
-                top: (!_theaterMode && !_videoFullscreen && _url.isNotEmpty) ? _kHudHeight : 0,
+                top: (!_theaterMode && !_videoFullscreen && _url.isNotEmpty)
+                    ? _kHudHeight
+                    : 0,
                 left: 0,
                 right: 0,
                 bottom: 0,
@@ -2647,13 +2824,37 @@ class _BrowserScreenState extends State<BrowserScreen>
                     passthrough: _passthrough,
                     onBack: _goBack,
                     onBookmark: _url.isNotEmpty ? _bookmarkCurrent : null,
-                    onForward: _canGoForward ? () => _webController.goForward() : null,
-                    onScrollUp: _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowUp'}) : null,
-                    onScrollDown: _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowDown'}) : null,
-                    onKeyLeft: _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowLeft'}) : null,
-                    onKeyRight: _url.isNotEmpty ? () => _handleCommand({'action': 'keyboard_key', 'key': 'ArrowRight'}) : null,
+                    onForward: _canGoForward
+                        ? () => _webController.goForward()
+                        : null,
+                    onScrollUp: _url.isNotEmpty
+                        ? () => _handleCommand({
+                            'action': 'keyboard_key',
+                            'key': 'ArrowUp',
+                          })
+                        : null,
+                    onScrollDown: _url.isNotEmpty
+                        ? () => _handleCommand({
+                            'action': 'keyboard_key',
+                            'key': 'ArrowDown',
+                          })
+                        : null,
+                    onKeyLeft: _url.isNotEmpty
+                        ? () => _handleCommand({
+                            'action': 'keyboard_key',
+                            'key': 'ArrowLeft',
+                          })
+                        : null,
+                    onKeyRight: _url.isNotEmpty
+                        ? () => _handleCommand({
+                            'action': 'keyboard_key',
+                            'key': 'ArrowRight',
+                          })
+                        : null,
                     onStop: () => _webController.runJavaScript('window.stop()'),
-                    onReload: _url.isNotEmpty ? () => _webController.reload() : null,
+                    onReload: _url.isNotEmpty
+                        ? () => _webController.reload()
+                        : null,
                     onExit: _armExitConfirm,
                   ),
                 ),
@@ -2680,13 +2881,23 @@ class _BrowserScreenState extends State<BrowserScreen>
                   child: IgnorePointer(
                     child: Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xCC000000),
                           border: Border.all(color: _kGreen),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: Text(_modeToast!, style: const TextStyle(color: _kGreen, fontSize: 14, fontWeight: FontWeight.bold)),
+                        child: Text(
+                          _modeToast!,
+                          style: const TextStyle(
+                            color: _kGreen,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -2699,13 +2910,16 @@ class _BrowserScreenState extends State<BrowserScreen>
                   initialText: '',
                   controller: _urlHistory,
                   onGo: (_) {},
-                  onType: (t) => _handleCommand({'action': 'keyboard_type', 'text': t}),
-                  onBackspace: () => _handleCommand({'action': 'keyboard_backspace'}),
+                  onType: (t) =>
+                      _handleCommand({'action': 'keyboard_type', 'text': t}),
+                  onBackspace: () =>
+                      _handleCommand({'action': 'keyboard_backspace'}),
                   onEnter: () {
                     setState(() => _showTextKeyboard = false);
                     _handleCommand({'action': 'keyboard_enter'});
                   },
-                  onClearField: () => _handleCommand({'action': 'keyboard_clear_field'}),
+                  onClearField: () =>
+                      _handleCommand({'action': 'keyboard_clear_field'}),
                   onMic: _micPress,
                   micActive: _micActive,
                   micStatus: _micStatus,
@@ -2725,7 +2939,8 @@ class _BrowserScreenState extends State<BrowserScreen>
                   micStatus: _micStatus,
                   onClose: () => setState(() => _showUrlKeyboard = false),
                 ),
-              if (_agentPanelOpen && (_agentLog.isNotEmpty || _agentStatus != null))
+              if (_agentPanelOpen &&
+                  (_agentLog.isNotEmpty || _agentStatus != null))
                 Positioned(
                   right: 6,
                   bottom: 6,
@@ -2743,20 +2958,28 @@ class _BrowserScreenState extends State<BrowserScreen>
                         mainAxisSize: MainAxisSize.max,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(children: [
-                            Container(
+                          Row(
+                            children: [
+                              Container(
                                 width: 6,
                                 height: 6,
                                 decoration: const BoxDecoration(
-                                    color: _kGreen, shape: BoxShape.circle)),
-                            const SizedBox(width: 5),
-                            const Text('AI AGENT',
+                                  color: _kGreen,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                              const SizedBox(width: 5),
+                              const Text(
+                                'AI AGENT',
                                 style: TextStyle(
-                                    color: _kGreen,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1)),
-                          ]),
+                                  color: _kGreen,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 3),
                           Flexible(
                             child: ListView.builder(
@@ -2765,7 +2988,8 @@ class _BrowserScreenState extends State<BrowserScreen>
                               itemCount: _agentLog.length, // history only
                               itemBuilder: (_, i) {
                                 final line = _agentLog[i];
-                                final dim = line.startsWith('⚙︎') ||
+                                final dim =
+                                    line.startsWith('⚙︎') ||
                                     line.startsWith('💭');
                                 return Padding(
                                   padding: const EdgeInsets.only(bottom: 2),
@@ -2775,10 +2999,10 @@ class _BrowserScreenState extends State<BrowserScreen>
                                       color: line.startsWith('🗣')
                                           ? Colors.white
                                           : line.startsWith('✓')
-                                              ? _kGreen
-                                              : dim
-                                                  ? _kSoftGreen
-                                                  : const Color(0xFFFFB0B0),
+                                          ? _kGreen
+                                          : dim
+                                          ? _kSoftGreen
+                                          : const Color(0xFFFFB0B0),
                                       fontSize: 10,
                                       height: 1.15,
                                     ),
@@ -2928,24 +3152,43 @@ class _HudBar extends StatelessWidget {
   });
 
   static final Map<String, GlobalKey> toolKeys = {
-    for (final n in ['address', 'back', 'forward', 'left', 'right', 'up', 'down', 'stop', 'reload', 'exit']) n: GlobalKey(),
+    for (final n in [
+      'address',
+      'back',
+      'forward',
+      'left',
+      'right',
+      'up',
+      'down',
+      'stop',
+      'reload',
+      'exit',
+    ])
+      n: GlobalKey(),
   };
 
-  Widget _tool(String name, IconData icon, VoidCallback? cb, {Color? color}) => GestureDetector(
-        key: toolKeys[name],
-        behavior: HitTestBehavior.opaque,
-        onTap: cb,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
-          child: Icon(
-            icon,
-            color: color ?? (cb == null ? _kGreen.withValues(alpha: 0.3) : _kGreen),
-            size: 14,
-            weight: 800,
-            shadows: cb == null ? null : const [Shadow(color: _kGreen, blurRadius: 4)],
-          ),
-        ),
-      );
+  Widget _tool(
+    String name,
+    IconData icon,
+    VoidCallback? cb, {
+    Color? color,
+  }) => GestureDetector(
+    key: toolKeys[name],
+    behavior: HitTestBehavior.opaque,
+    onTap: cb,
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+      child: Icon(
+        icon,
+        color: color ?? (cb == null ? _kGreen.withValues(alpha: 0.3) : _kGreen),
+        size: 14,
+        weight: 800,
+        shadows: cb == null
+            ? null
+            : const [Shadow(color: _kGreen, blurRadius: 4)],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -2973,15 +3216,15 @@ class _HudBar extends StatelessWidget {
               key: toolKeys['address'],
               alignment: Alignment.centerLeft,
               child: Text(
-              url.isNotEmpty ? url : title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: _kSoftGreen,
-                fontSize: 9,
-                letterSpacing: 0.3,
+                url.isNotEmpty ? url : title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _kSoftGreen,
+                  fontSize: 9,
+                  letterSpacing: 0.3,
+                ),
               ),
-            ),
             ),
           ),
           if (url.isNotEmpty && onBookmark != null) ...[
@@ -3005,7 +3248,12 @@ class _HudBar extends StatelessWidget {
           _tool('down', Icons.keyboard_arrow_down, onScrollDown),
           _tool('stop', Icons.stop_circle, loading ? onStop : null),
           _tool('reload', Icons.refresh, onReload),
-          _tool('exit', Icons.power_settings_new, onExit, color: const Color(0xFFFF6666)),
+          _tool(
+            'exit',
+            Icons.power_settings_new,
+            onExit,
+            color: const Color(0xFFFF6666),
+          ),
           // Passthrough mode indicator
           if (passthrough) ...[
             const SizedBox(width: 4),

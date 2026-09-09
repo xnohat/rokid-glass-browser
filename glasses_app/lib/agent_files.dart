@@ -18,6 +18,27 @@ class AgentFiles {
   // Per-agent-turn download cap so a runaway loop can't fill storage.
   static const _maxDownloadBytes = 25 * 1024 * 1024; // 25 MB
   static const _maxReadTextBytes = 200 * 1024; // 200 KB for text reads
+  static const _maxShellOutputBytes = 64 * 1024;
+  static const _maxShellMs = 10000;
+  static const _shellCommands = {
+    'ls',
+    'cat',
+    'head',
+    'tail',
+    'grep',
+    'find',
+    'pwd',
+    'wc',
+    'sort',
+    'uniq',
+    'cut',
+    'tr',
+    'echo',
+    'printf',
+    'date',
+    'uname',
+    'id',
+  };
 
   Future<Directory> _workspace() async {
     if (_root != null) return _root!;
@@ -41,9 +62,7 @@ class AgentFiles {
   String _safeJoin(String rootPath, String rel) {
     final cleaned = rel.replaceAll('\\', '/').trim();
     if (cleaned.isEmpty) throw const FormatException('Empty path');
-    final joined = Uri.parse('file://$rootPath/')
-        .resolve(cleaned)
-        .toFilePath();
+    final joined = Uri.parse('file://$rootPath/').resolve(cleaned).toFilePath();
     // Normalise .. / . and ensure still under root.
     final norm = File(joined).uri.normalizePath().toFilePath();
     final rootNorm = rootPath.endsWith('/') ? rootPath : '$rootPath/';
@@ -51,6 +70,78 @@ class AgentFiles {
       throw const FormatException('Path escapes the workspace');
     }
     return norm;
+  }
+
+  /// Run one allowlisted Android toybox applet inside agent_workspace only.
+  /// No shell parser, pipes, redirects, globbing, env injection, or absolute paths.
+  Future<Map<String, dynamic>> runShell(
+    String command, {
+    int timeoutMs = _maxShellMs,
+  }) async {
+    final ws = await _workspace();
+    final parts = command.trim().split(RegExp(r'\s+'));
+    if (parts.isEmpty ||
+        parts.first.isEmpty ||
+        !_shellCommands.contains(parts.first)) {
+      return {
+        'error':
+            'Only allowlisted Android toybox applets are available: ${_shellCommands.join(', ')}',
+      };
+    }
+    if (parts.any(
+      (p) =>
+          p.contains('/') ||
+          p.contains('..') ||
+          p.contains('\\') ||
+          p.contains(';') ||
+          p.contains('|') ||
+          p.contains('>') ||
+          p.contains('<') ||
+          p.contains('&'),
+    )) {
+      return {
+        'error':
+            'Shell syntax, absolute paths, traversal, and separators are not allowed',
+      };
+    }
+    final args = parts.skip(1).toList();
+    final safeArgs = <String>[];
+    for (final arg in args) {
+      if (arg.startsWith('-')) {
+        safeArgs.add(arg);
+        continue;
+      }
+      final candidate = File(_safeJoin(ws.path, arg));
+      final canonical = candidate.parent.resolveSymbolicLinksSync();
+      final root = ws.resolveSymbolicLinksSync();
+      if (!(canonical == root || canonical.startsWith('$root/')))
+        return {'error': 'Path escapes agent_workspace'};
+      if (candidate.existsSync() &&
+          candidate.resolveSymbolicLinksSync() != candidate.path)
+        return {'error': 'Symlink paths are not allowed'};
+      safeArgs.add(_rel(candidate.path));
+    }
+    final result =
+        await Process.run('/system/bin/toybox', [
+          parts.first,
+          ...safeArgs,
+        ], workingDirectory: ws.path).timeout(
+          Duration(milliseconds: timeoutMs.clamp(100, _maxShellMs)),
+          onTimeout: () => ProcessResult(-1, -1, '', 'Command timed out'),
+        );
+    String clip(Object value) {
+      final text = value.toString();
+      return text.length > _maxShellOutputBytes
+          ? '${text.substring(0, _maxShellOutputBytes)}…'
+          : text;
+    }
+
+    return {
+      'ok': result.exitCode == 0,
+      'exitCode': result.exitCode,
+      'stdout': clip(result.stdout),
+      'stderr': clip(result.stderr),
+    };
   }
 
   Future<Map<String, dynamic>> listDir(String rel) async {
@@ -70,12 +161,17 @@ class AgentFiles {
     return {'ok': true, 'entries': entries};
   }
 
-  Future<Map<String, dynamic>> writeFile(String rel, String content,
-      {bool append = false}) async {
+  Future<Map<String, dynamic>> writeFile(
+    String rel,
+    String content, {
+    bool append = false,
+  }) async {
     final f = await _resolveFile(rel);
     f.parent.createSync(recursive: true);
-    await f.writeAsString(content,
-        mode: append ? FileMode.append : FileMode.write);
+    await f.writeAsString(
+      content,
+      mode: append ? FileMode.append : FileMode.write,
+    );
     return {'ok': true, 'path': _rel(f.path), 'bytes': f.lengthSync()};
   }
 
@@ -99,22 +195,31 @@ class AgentFiles {
     if (_isImage(ext)) {
       final bytes = await f.readAsBytes();
       final desc = await _vision.describeBytes(
-          bytes, _mimeFor(ext), question,
-          kind: 'image');
+        bytes,
+        _mimeFor(ext),
+        question,
+        kind: 'image',
+      );
       return {'ok': true, 'type': 'image', 'observation': desc};
     }
     if (_isAudio(ext)) {
       final bytes = await f.readAsBytes();
       final desc = await _vision.describeBytes(
-          bytes, _mimeFor(ext), question,
-          kind: 'audio');
+        bytes,
+        _mimeFor(ext),
+        question,
+        kind: 'audio',
+      );
       return {'ok': true, 'type': 'audio', 'observation': desc};
     }
     if (_isVideo(ext)) {
       final bytes = await f.readAsBytes();
       final desc = await _vision.describeBytes(
-          bytes, _mimeFor(ext), question,
-          kind: 'video');
+        bytes,
+        _mimeFor(ext),
+        question,
+        kind: 'video',
+      );
       return {'ok': true, 'type': 'video', 'observation': desc};
     }
     // Treat as text.
@@ -169,7 +274,9 @@ class AgentFiles {
       await sink.close();
       if (overflow) {
         if (f.existsSync()) f.deleteSync();
-        return {'error': 'file exceeds ${_maxDownloadBytes ~/ (1024 * 1024)}MB cap'};
+        return {
+          'error': 'file exceeds ${_maxDownloadBytes ~/ (1024 * 1024)}MB cap',
+        };
       }
       return {'ok': true, 'path': _rel(f.path), 'bytes': f.lengthSync()};
     } catch (e) {
