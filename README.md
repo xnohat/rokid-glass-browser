@@ -1,3 +1,5 @@
+
+
 # Rokid Glass Browser
 
 A standalone web browser for **Rokid AI Glasses (RV101, Android 12)** that you drive from any phone's web browser over Wi‑Fi — no companion app to install, no Bluetooth pairing, no cloud.
@@ -30,7 +32,7 @@ The glasses run the browser **and** host a tiny web page. Open that page on your
 **On the glasses**
 - **Floating agent console** (bottom-right, shows while the agent runs): what you said (🗣), the model's thinking (💭), each tool/command it runs (⚙︎) and the final result (✓), auto-scrolling to the newest line
 - **AI agent (hold the temple button)**: hold → beep + the console shows **LISTENING**, say what you want, press the button once → the command is transcribed and an agent carries it out with browser + app tools (navigate / read_page / click / type / press_enter / scroll / back / forward / reload / app_action). **Hold again** (while listening or running) cancels and re‑listens; **double‑tap** the touchpad cancels the agent. Works for one‑shot commands (“refresh”, “scroll down a bit”) and multi‑step ones (“open YouTube and find videos about palantir ontology”). Same agent can be driven from the web remote's command box
-- All on-glasses UI is in English
+- Most on-glasses UI is in English; a few button labels are in Vietnamese
 - **Voice input (🎤 on both keyboards)**: tap once → beep + “ĐANG NGHE…”, speak, tap ⏹ → text is recognised by Gemini (default **gemini-3.8-flash** (cheapest); pick any model from the web remote after *Fetch models*) and typed into the field. Needs a Gemini API key saved from the web remote (Settings → *Gemini API key*, stored on the glasses only). The RV101 has no Google Speech, so sites’ own voice search cannot work; this replaces it
 - **Microphone for web pages** (YouTube / Google voice search works; permission asked once on first launch)
 - Page content is laid out **below** the address bar (no more fixed headers hidden under it — e.g. the YouTube search button)
