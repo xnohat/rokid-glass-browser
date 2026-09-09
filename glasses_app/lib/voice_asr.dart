@@ -14,16 +14,25 @@ class VoiceAsr {
   static const defaultModel = 'gemini-3.8-flash';
 
   static Future<String> loadModel() async =>
-      (await SharedPreferences.getInstance()).getString(_modelKey) ?? defaultModel;
+      (await SharedPreferences.getInstance()).getString(_modelKey) ??
+      defaultModel;
 
   static Future<void> saveModel(String m) async =>
-      (await SharedPreferences.getInstance()).setString(_modelKey, m.trim().isEmpty ? defaultModel : m.trim());
+      (await SharedPreferences.getInstance()).setString(
+        _modelKey,
+        m.trim().isEmpty ? defaultModel : m.trim(),
+      );
 
   /// Lists Gemini models that support generateContent (audio-capable families).
   static Future<List<String>> listModels(String key) async {
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
-      final req = await client.getUrl(Uri.parse('https://generativelanguage.googleapis.com/v1beta/models?key=$key&pageSize=200'));
+      final req = await client.getUrl(
+        Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models?key=$key&pageSize=200',
+        ),
+      );
       final res = await req.close().timeout(const Duration(seconds: 20));
       final text = await res.transform(utf8.decoder).join();
       if (res.statusCode != 200) throw StateError('HTTP ${res.statusCode}');
@@ -31,10 +40,12 @@ class VoiceAsr {
       final out = <String>[];
       for (final m in (j['models'] as List? ?? const [])) {
         final name = (m['name'] ?? '').toString().replaceFirst('models/', '');
-        final methods = (m['supportedGenerationMethods'] as List? ?? const []).cast<String>();
+        final methods = (m['supportedGenerationMethods'] as List? ?? const [])
+            .cast<String>();
         if (!methods.contains('generateContent')) continue;
         if (!name.startsWith('gemini')) continue;
-        if (RegExp(r'image|tts|embedding|robotics|computer-use').hasMatch(name)) continue;
+        if (RegExp(r'image|tts|embedding|robotics|computer-use').hasMatch(name))
+          continue;
         out.add(name);
       }
       out.sort();
@@ -76,7 +87,8 @@ class VoiceAsr {
     final path = await _channel.invokeMethod<String>('asrStop');
     if (path == null) throw StateError('Could not record audio');
     final key = await loadKey();
-    if (key.isEmpty) throw StateError('No Gemini API key (set it in the web remote)');
+    if (key.isEmpty)
+      throw StateError('No Gemini API key (set it in the web remote)');
     final model = await loadModel();
     final bytes = await File(path).readAsBytes();
     if (bytes.length < 4000) throw StateError('Microphone returned no audio');
@@ -94,38 +106,57 @@ class VoiceAsr {
           'parts': [
             {
               'text':
-                  'Transcribe this audio verbatim. Reply with ONLY the spoken text, no quotes, no explanation. Language is most likely $lang or English.'
+                  'Transcribe this audio verbatim. Reply with ONLY the spoken text, no quotes, no explanation. Language is most likely $lang or English.',
             },
             {
-              'inline_data': {'mime_type': 'audio/wav', 'data': base64Encode(bytes)}
+              'inline_data': {
+                'mime_type': 'audio/wav',
+                'data': base64Encode(bytes),
+              },
             },
-          ]
-        }
+          ],
+        },
       ],
-      'generationConfig': {'temperature': 0, 'maxOutputTokens': 400}
+      'generationConfig': {'temperature': 0, 'maxOutputTokens': 2048},
     });
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15);
     try {
-      final req = await client.postUrl(Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$key'));
+      final req = await client.postUrl(
+        Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$key',
+        ),
+      );
       req.headers.contentType = ContentType.json;
       req.write(body);
       final res = await req.close().timeout(const Duration(seconds: 30));
       final text = await res.transform(utf8.decoder).join();
       if (res.statusCode != 200) {
-        final msg = (jsonDecode(text)['error']?['message'] ?? 'HTTP ${res.statusCode}').toString();
-        throw StateError('Gemini: ${msg.length > 80 ? msg.substring(0, 80) : msg}');
+        final msg =
+            (jsonDecode(text)['error']?['message'] ?? 'HTTP ${res.statusCode}')
+                .toString();
+        throw StateError(
+          'Gemini: ${msg.length > 80 ? msg.substring(0, 80) : msg}',
+        );
       }
       final j = jsonDecode(text);
       // Chat models answer in `text`; transcribe models in `audioTranscription.text`.
-      final parts = (j['candidates']?[0]?['content']?['parts'] as List?) ?? const [];
+      final parts =
+          (j['candidates']?[0]?['content']?['parts'] as List?) ?? const [];
       var out = '';
       for (final part in parts) {
-        final t = (part['audioTranscription']?['text'] ?? part['text'] ?? '').toString().trim();
-        if (t.isNotEmpty) { out = t; break; }
+        final t = (part['audioTranscription']?['text'] ?? part['text'] ?? '')
+            .toString()
+            .trim();
+        if (t.isNotEmpty) {
+          out = t;
+          break;
+        }
       }
       // Keep the last WAV for debugging (overwritten each time).
-      try { File(path).copySync('${File(path).parent.path}/asr-last.wav'); } catch (_) {}
+      try {
+        File(path).copySync('${File(path).parent.path}/asr-last.wav');
+      } catch (_) {}
       return out.replaceAll(RegExp(r'^["“]|["”]$'), '');
     } finally {
       client.close(force: true);

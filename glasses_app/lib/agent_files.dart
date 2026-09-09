@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/services.dart';
+
 import 'agent_vision.dart';
 
 /// Sandboxed file tools for the agent: everything is confined to a single
@@ -9,10 +11,11 @@ import 'agent_vision.dart';
 /// symlink break-out), so the agent can never touch app credentials or files
 /// outside its box.
 class AgentFiles {
-  AgentFiles(this._vision, this._filesDirProvider);
+  AgentFiles(this._vision, this._filesDirProvider, this._methodChannel);
   final AgentVision _vision;
   // Returns the app's private files dir (from native getFilesDir()).
   final Future<String?> Function() _filesDirProvider;
+  final MethodChannel _methodChannel;
 
   Directory? _root;
   // Per-agent-turn download cap so a runaway loop can't fill storage.
@@ -159,6 +162,29 @@ class AgentFiles {
       });
     }
     return {'ok': true, 'entries': entries};
+  }
+
+  Future<Map<String, dynamic>> runGit({
+    required String action,
+    String path = '.',
+    String message = 'Agent commit',
+    List<String> files = const ['.'],
+    int max = 10,
+  }) async {
+    final ws = await _workspace();
+    try {
+      final raw = await _native.invokeMethod<Map<dynamic, dynamic>>('runGit', {
+        'workspaceDir': ws.path,
+        'action': action,
+        'path': path,
+        'message': message,
+        'files': files,
+        'max': max,
+      });
+      return Map<String, dynamic>.from(raw ?? const {});
+    } catch (e) {
+      return {'error': e.toString()};
+    }
   }
 
   Future<Map<String, dynamic>> writeFile(
@@ -339,6 +365,114 @@ class AgentFiles {
         return 'video/webm';
       default:
         return 'application/octet-stream';
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Node.js runner (Node 18.20.4 / nodejs-mobile v18.20.4)
+  // ---------------------------------------------------------------------------
+
+  /// Limits shared by [runNode].
+  static const _maxNodeOutputBytes = 64 * 1024; // 64 KB per stream
+  static const _maxNodeMs = 30000; // 30 s default
+  static const _maxNodeMsHard = 120000; // 2 min ceiling
+  static const _maxWorkspaceBytes = 100 * 1024 * 1024; // 100 MB disk quota
+
+  /// Run a pure-JavaScript file inside the workspace using the bundled
+  /// Node.js 18.20.4 runtime (JaneaSystems nodejs-mobile v18.20.4, arm64-v8a).
+  ///
+  /// The script runs in a dedicated Android service process (:node) that is
+  /// killed with System.exit() after each invocation — V8 is never re-entered
+  /// in the same process instance (disposable-process pattern).
+  ///
+  /// Limits:
+  ///   - [timeoutMs]: wall-clock limit (default 30 s, max 120 s).
+  ///   - stdout/stderr are each capped at 64 KB.
+  ///   - Total workspace disk usage must be ≤ 100 MB before the run starts.
+  ///
+  /// npm / npx:
+  ///   Pass [isNpm]=true (or let the tool detect "npm"/"npx" prefix) to have
+  ///   this method prepend "--ignore-scripts" to the effective npm invocation,
+  ///   preventing lifecycle hooks (preinstall, postinstall, prepare …) from
+  ///   running.  npm itself must be present in the workspace
+  ///   (e.g. workspace/node_modules/.bin/npm or workspace/npm/cli.js).
+  ///
+  /// WARNING – Node 18.20.4 is Maintenance release (official v18.20.4).  Do not use it to
+  /// execute untrusted code; it receives no security patches.  See
+  /// docs/NODE_RUNTIME.md for details.
+  Future<Map<String, dynamic>> runNode(
+    String scriptRel, {
+    List<String> scriptArgs = const [],
+    List<String> nodeFlags = const [],
+    int timeoutMs = _maxNodeMs,
+    bool isNpm = false,
+  }) async {
+    final ws = await _workspace();
+
+    // Validate script path stays inside workspace.
+    final File scriptFile;
+    try {
+      scriptFile = await _resolveFile(scriptRel);
+    } on FormatException catch (e) {
+      return {'error': e.message};
+    }
+    if (!scriptFile.existsSync()) {
+      return {'error': 'Script not found: $scriptRel'};
+    }
+
+    // Disk quota check.
+    final wsSize = ws
+        .listSync(recursive: true)
+        .fold<int>(0, (sum, e) => sum + (e is File ? e.lengthSync() : 0));
+    if (wsSize > _maxWorkspaceBytes) {
+      return {
+        'error':
+            'Workspace disk quota exceeded '
+            '(${wsSize ~/ 1024 ~/ 1024} MB > '
+            '${_maxWorkspaceBytes ~/ 1024 ~/ 1024} MB). '
+            'Delete files before running Node.',
+      };
+    }
+
+    // For npm/npx: inject --ignore-scripts to disable lifecycle hooks.
+    // effectiveFlags go before the script path (Node VM flags).
+    // effectiveArgs go after the script path (script's process.argv).
+    final effectiveFlags = <String>[...nodeFlags];
+    final effectiveArgs = <String>[
+      ...scriptArgs,
+      if (isNpm) '--ignore-scripts',
+    ];
+
+    final clampedMs = timeoutMs.clamp(1000, _maxNodeMsHard);
+
+    try {
+      final result = await _methodChannel.invokeMethod<Map>('runNode', {
+        'scriptPath': scriptFile.path,
+        'timeoutMs': clampedMs,
+        'nodeArgs': effectiveFlags,
+        'scriptArgs': effectiveArgs,
+        'workspaceDir': ws.path,
+      });
+      if (result == null) return {'error': 'runNode returned null'};
+
+      String clip(String s) => s.length > _maxNodeOutputBytes
+          ? '${s.substring(0, _maxNodeOutputBytes)}…[truncated]'
+          : s;
+
+      final timedOut = result['timedOut'] as bool? ?? false;
+      final diskQuota = result['diskQuota'] as bool? ?? false;
+      if (diskQuota) {
+        return {'error': 'Disk quota exceeded (checked server-side).'};
+      }
+      return {
+        'ok': (result['exitCode'] as int? ?? -1) == 0,
+        'exitCode': result['exitCode'] ?? -1,
+        'stdout': clip((result['stdout'] as String?) ?? ''),
+        'stderr': clip((result['stderr'] as String?) ?? ''),
+        if (timedOut) 'timedOut': true,
+      };
+    } catch (e) {
+      return {'error': e.toString()};
     }
   }
 }

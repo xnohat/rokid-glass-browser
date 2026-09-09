@@ -73,12 +73,25 @@ The agent console (bottom‑right) shows what you said (🗣), the model's think
 
 While the browser is in the foreground it asks the Rokid system to disable the button's photo/video actions, and restores them when you leave — same mechanism as rokid‑zoom‑in‑camera. Two‑finger gestures are owned by the Rokid system (volume, AI assistant) and cannot be remapped by an app; see `docs/gesture-lab/README.md` for the full measured gesture table. · Khi trình duyệt đang mở, app yêu cầu hệ thống Rokid tắt chức năng chụp ảnh/quay phim của nút và khôi phục khi thoát. Cử chỉ 2 ngón do hệ thống Rokid chiếm (âm lượng, trợ lý AI) nên app không map lại được.
 
+## Agent workspace & tools / Workspace và công cụ Agent
+
+The agent has a private workspace inside the app. Paths cannot escape this directory. · Agent có workspace riêng bên trong app; đường dẫn không thể thoát ra ngoài.
+
+- **Files · Tệp:** list/read/write/delete, HTTPS download (25 MB cap), and Gemini understanding for image/audio/video files.
+- **Python:** embedded **Python 3.13.5** in a disposable `:python` process; `run_python` has timeout/output bounds. `install_python_package` installs universal pure-Python wheels only (`*-none-any.whl`) into `.python`; Dart/Android TLS downloads the wheel and pip installs locally with `--no-index --no-deps --only-binary=:all:`. Verified with `six==1.17.0`.
+- **Shell:** allowlisted Android toybox commands in the workspace (`pwd`, `ls`, `cat`, `cp`, `mv`, `grep`, `sed`, `find`, `head`, `tail`, etc.); no arbitrary shell operators or paths outside the workspace.
+- **Git:** local repositories via Eclipse JGit: init/status/add/commit/log. No remote credentials or push/pull. Verified on-device through a clean commit cycle.
+- **Camera & multimodal · Camera và đa phương thức:** `see_page`, `watch_video` (YouTube URL goes directly to Gemini), `see_camera`, `watch_camera`, and microphone/ambient listening.
+- **History · Lịch sử:** current-session agent history stays in the fixed console, can be reviewed with touchpad swipes, and is available in full on the web remote with per-turn delete and clear-all.
+
+**Not shipped · Không ship:** Node/npm (YodaOS SELinux blocks Node/libuv `/proc/self/cwd`), FFmpeg/FFprobe executables (YodaOS denies executing the packaged PIE binaries), and ImageMagick/Pillow native imaging (native module load blocked). Details: `docs/node-same-apk-rv101-result.md`, `docs/media-tools-result.md`. No broken tool is advertised.
+
 ## Install
 
 Requirements: Rokid RV101 with developer mode (ADB) enabled and the 5‑pin debug cable, or install the APK through Hi Rokid → Toolbox → Glasses app management.
 
 ```bash
-adb install -r releases/rokid-glass-browser-1.26.1.apk
+adb install -r releases/rokid-glass-browser-1.31.1.apk
 ```
 
 ## Use

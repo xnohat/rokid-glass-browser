@@ -67,6 +67,8 @@ class MainActivity : FlutterActivity() {
     @Volatile private var asrStop = false
     private var asrThread: Thread? = null
     @Volatile private var ttsTrack: android.media.AudioTrack? = null
+    private val pythonJobActive = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val nodeJobActive = java.util.concurrent.atomic.AtomicBoolean(false)
     private var asrFile: java.io.File? = null
 
     private fun setRokidButtonFunctions(shortPress: String, longPress: String) {
@@ -599,6 +601,135 @@ class MainActivity : FlutterActivity() {
                 "filesDir" -> {
                     result.success(filesDir.absolutePath)
                 }
+                "runNode" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val scriptPath = args?.get("scriptPath") as? String
+                    val workspaceDir = args?.get("workspaceDir") as? String
+                    val timeoutMs = ((args?.get("timeoutMs") as? Number)?.toLong() ?: 30000L).coerceIn(1000L, 120000L)
+                    val nodeArgs = (args?.get("nodeArgs") as? List<*>)?.mapNotNull { it as? String }?.toTypedArray() ?: emptyArray()
+                    val scriptArgs = (args?.get("scriptArgs") as? List<*>)?.mapNotNull { it as? String }?.toTypedArray() ?: emptyArray()
+                    if (scriptPath.isNullOrBlank() || workspaceDir.isNullOrBlank()) {
+                        pythonJobActive.set(false)
+                        result.error("invalid_args", "scriptPath/workspaceDir required", null)
+                        return@setMethodCallHandler
+                    }
+                    if (!nodeJobActive.compareAndSet(false, true)) {
+                        result.error("busy", "Another Node job is active", null)
+                        return@setMethodCallHandler
+                    }
+                    try {
+                        val ws = java.io.File(workspaceDir).canonicalFile
+                        val script = java.io.File(scriptPath).canonicalFile
+                        if (!(script.path == ws.path || script.path.startsWith(ws.path + java.io.File.separator)) || !script.isFile) {
+                            nodeJobActive.set(false)
+                            result.error("path_escape", "Script must be a file inside agent_workspace", null)
+                            return@setMethodCallHandler
+                        }
+                        val runDir = java.io.File(cacheDir, "node_runs/${java.util.UUID.randomUUID()}").apply { mkdirs() }
+                        val stdout = java.io.File(runDir, "stdout.txt")
+                        val stderr = java.io.File(runDir, "stderr.txt")
+                        val done = java.io.File(runDir, "done.txt")
+                        val pidFile = java.io.File(runDir, "pid.txt")
+                        val intent = Intent().setClassName(packageName, packageName + ".NodeService").apply {
+                            putExtra("scriptPath", script.path)
+                            putExtra("workspacePath", ws.path)
+                            putExtra("stdoutPath", stdout.path)
+                            putExtra("stderrPath", stderr.path)
+                            putExtra("donePath", done.path)
+                            putExtra("pidPath", pidFile.path)
+                            putExtra("nodeArgs", nodeArgs)
+                            putExtra("scriptArgs", scriptArgs)
+                        }
+                        startService(intent)
+                        Thread {
+                            val deadline = System.currentTimeMillis() + timeoutMs
+                            var outputLimit = false
+                            var diskLimit = false
+                            fun workspaceBytes(dir: java.io.File): Long {
+                                var total = 0L
+                                dir.walkTopDown().forEach { if (it.isFile) total += it.length() }
+                                return total
+                            }
+                            while (!done.exists() && System.currentTimeMillis() < deadline) {
+                                if ((stdout.exists() && stdout.length() > 65536L) ||
+                                    (stderr.exists() && stderr.length() > 65536L)) {
+                                    outputLimit = true; break
+                                }
+                                if (workspaceBytes(ws) > 100L * 1024 * 1024) {
+                                    diskLimit = true; break
+                                }
+                                Thread.sleep(50)
+                            }
+                            val timedOut = !done.exists() && !outputLimit && !diskLimit
+                            if (!done.exists()) {
+                                try { stopService(intent) } catch (_: Exception) {}
+                                // Kill only the PID written by THIS job, and verify its
+                                // cmdline before killing so a later job cannot be hit.
+                                val pid = try { pidFile.readText().trim().toInt() } catch (_: Exception) { -1 }
+                                if (pid > 0) {
+                                    val cmdline = try { java.io.File("/proc/$pid/cmdline").readText() } catch (_: Exception) { "" }
+                                    if (cmdline.contains(packageName + ":node")) {
+                                        try { android.os.Process.killProcess(pid) } catch (_: Exception) {}
+                                    }
+                                }
+                            }
+                            fun readClip(f: java.io.File): String {
+                                if (!f.exists()) return ""
+                                val clipped = f.length() > 65536L
+                                val n = minOf(f.length(), 65536L).toInt()
+                                val bytes = ByteArray(n)
+                                java.io.RandomAccessFile(f, "r").use { it.readFully(bytes) }
+                                return String(bytes, Charsets.UTF_8) + if (clipped) "…[truncated]" else ""
+                            }
+                            val exit = if (done.exists()) done.readText().trim().toIntOrNull() ?: -1 else -1
+                            val payload = mapOf("exitCode" to exit, "timedOut" to timedOut,
+                                "stdout" to readClip(stdout), "stderr" to readClip(stderr),
+                                "diskQuota" to diskLimit, "outputLimit" to outputLimit)
+                            try { runDir.deleteRecursively() } catch (_: Exception) {}
+                            nodeJobActive.set(false)
+                            runOnUiThread { result.success(payload) }
+                        }.start()
+                    } catch (e: Exception) {
+                        nodeJobActive.set(false)
+                        result.error("execution_error", e.message, null)
+                    }
+                }
+                "runGit" -> {
+                    val a = call.arguments as? Map<*, *>
+                    val workspace = a?.get("workspaceDir") as? String
+                    val action = a?.get("action") as? String
+                    val path = a?.get("path") as? String ?: "."
+                    val message = a?.get("message") as? String ?: "Agent commit"
+                    if (workspace.isNullOrBlank() || action.isNullOrBlank()) {
+                        result.error("invalid_args", "workspaceDir/action required", null); return@setMethodCallHandler
+                    }
+                    Thread {
+                        val out: Map<String, Any?> = try {
+                            val ws = java.io.File(workspace).canonicalFile
+                            val repo = java.io.File(ws, path).canonicalFile
+                            if (!(repo.path == ws.path || repo.path.startsWith(ws.path + java.io.File.separator))) throw SecurityException("path escape")
+                            when (action) {
+                                "init" -> {
+                                    repo.mkdirs(); org.eclipse.jgit.api.Git.init().setDirectory(repo).call().close()
+                                    mapOf("ok" to true, "path" to repo.path.removePrefix(ws.path).trimStart('/'))
+                                }
+                                else -> {
+                                    val git = org.eclipse.jgit.api.Git.open(repo)
+                                    try {
+                                        when (action) {
+                                            "status" -> { val s = git.status().call(); mapOf("ok" to true, "clean" to s.isClean, "added" to s.added.toList(), "changed" to s.changed.toList(), "modified" to s.modified.toList(), "untracked" to s.untracked.toList(), "removed" to s.removed.toList()) }
+                                            "add" -> { val files = (a["files"] as? List<*>)?.map { it.toString() } ?: listOf("."); files.forEach { git.add().addFilepattern(it).call() }; mapOf("ok" to true, "files" to files) }
+                                            "commit" -> { val c = git.commit().setMessage(message).setAuthor("Rokid Agent", "agent@local").setCommitter("Rokid Agent", "agent@local").call(); mapOf("ok" to true, "id" to c.id.name, "message" to c.fullMessage) }
+                                            "log" -> { val max = ((a["max"] as? Number)?.toInt() ?: 10).coerceIn(1, 50); val rows = git.log().setMaxCount(max).call().map { mapOf("id" to it.id.name, "message" to it.shortMessage, "author" to it.authorIdent.name) }; mapOf("ok" to true, "commits" to rows) }
+                                            else -> mapOf("error" to "unsupported git action")
+                                        }
+                                    } finally { git.close() }
+                                }
+                            }
+                        } catch (t: Throwable) { mapOf("error" to (t.message ?: t.toString())) }
+                        runOnUiThread { result.success(out) }
+                    }.start()
+                }
                 "capturePhoto" -> {
                     // World-facing camera still capture -> JPEG bytes for Gemini.
                     if (androidx.core.content.ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
@@ -839,6 +970,51 @@ class MainActivity : FlutterActivity() {
                         cursorBroughtToFront = true
                     }
                     result.success(true)
+                }
+                "runNode" -> {
+                    // Run a Node.js 12.19 script via the disposable NodeService.
+                    // The service runs in a separate ":node" process and calls
+                    // System.exit(0) after node::Start() returns — V8 is never
+                    // re-entered across invocations (disposable-process pattern).
+                    //
+                    // Args map (all optional except "scriptPath"):
+                    //   scriptPath   – absolute path to a .js file in agent_workspace
+                    //   timeoutMs    – wall-clock limit ms (default 30000, max 120000)
+                    //   nodeArgs     – extra Node.js flags ["--max-old-space-size=64"]
+                    //   workspaceDir – workspace root for disk-quota check
+                    val a = call.arguments as? Map<*, *>
+                    val scriptPath   = a?.get("scriptPath") as? String
+                    val workspaceDir = a?.get("workspaceDir") as? String
+                    val timeoutMs    = (a?.get("timeoutMs") as? Number)?.toLong() ?: 30_000L
+                    @Suppress("UNCHECKED_CAST")
+                    val nodeArgs    = (a?.get("nodeArgs")   as? List<String>)?.toTypedArray() ?: emptyArray()
+                    @Suppress("UNCHECKED_CAST")
+                    val scriptArgs  = (a?.get("scriptArgs") as? List<String>)?.toTypedArray() ?: emptyArray()
+                    if (scriptPath == null) {
+                        result.error("bad_args", "runNode requires scriptPath", null)
+                    } else {
+                        val wsDir = if (workspaceDir != null) java.io.File(workspaceDir)
+                                    else java.io.File(filesDir, "agent_workspace")
+                        Thread {
+                            val r = NodeRunner.run(
+                                context      = applicationContext,
+                                workspaceDir = wsDir,
+                                scriptPath   = scriptPath,
+                                nodeArgs     = nodeArgs,
+                                scriptArgs   = scriptArgs,
+                                timeoutMs    = timeoutMs,
+                            )
+                            runOnUiThread {
+                                result.success(mapOf(
+                                    "exitCode"  to r.exitCode,
+                                    "stdout"    to r.stdout,
+                                    "stderr"    to r.stderr,
+                                    "timedOut"  to r.timedOut,
+                                    "diskQuota" to r.diskQuotaExceeded,
+                                ))
+                            }
+                        }.start()
+                    }
                 }
                 else -> result.notImplemented()
             }

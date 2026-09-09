@@ -79,6 +79,7 @@ class BrowserAgent {
     'delete_file',
     'download_file',
     'run_shell',
+    'run_node',
     'done',
   };
 
@@ -94,10 +95,12 @@ Rules:
 - You may go straight to a search URL when you know it (e.g. https://m.youtube.com/results?search_query=...).
 - You can SEE and HEAR: use see_page to look at images / what is on screen, watch_video to understand the video that is playing, and listen_audio to hear (glasses microphone / ambient). Use these when the user asks about a picture, a video's content, or a sound — read_page only gives text.
 - You have a private FILE workspace (sandboxed folder on the glasses): list_files, read_file, write_file, delete_file, download_file. Use it to save/read notes, transcripts, or downloaded media.
+- You can RUN JAVASCRIPT with run_node: write a .js script to the workspace, then run_node it. Use for data processing, JSON/CSV transformations, calculations, or any task pure JS handles well. Output is captured and returned directly. Workspace quota is 100 MB; timeout 30 s default.
 - COMBINE tools to reach a goal, e.g.:
   * "what is in this image URL" → download_file the URL, then read_file it (media understanding).
   * "save a summary of this video" → watch_video to summarise, then write_file the summary.
   * "search X and tell me about the first result's video" → navigate/search, read_page, click the result, then watch_video.
+  * "process this JSON" → write_file the script → run_node → read stdout from result.
   Prefer the fewest tools that get the job done; after acting, call done with a short spoken-friendly answer.
 - Never ask the user questions; make a reasonable choice and continue.
 - Always answer in the SAME language the user spoke (Vietnamese command → Vietnamese reply). The reply may be read aloud, so keep it short and natural.
@@ -257,16 +260,36 @@ Rules:
       },
     },
     {
+      'name': 'run_git',
+      'description':
+          'Run a constrained local git operation in agent_workspace using Eclipse JGit (no shell binary). Actions: init, status, add, commit, log. path is a repository folder relative to workspace. For add, files is a list of repo-relative patterns. For commit, provide message. Use write_file first, then init/add/commit; use status/log to inspect. No remote push/pull or credentials.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'action': {'type': 'string'},
+          'path': {'type': 'string'},
+          'files': {
+            'type': 'array',
+            'items': {'type': 'string'},
+          },
+          'message': {'type': 'string'},
+          'max': {'type': 'integer'},
+        },
+        'required': ['action'],
+      },
+    },
+    {
       'name': 'run_shell',
-      'description': 'Run ONE allowlisted Android toybox command inside the private agent workspace. Use for local file inspection/processing when list_files/read_file/write_file are insufficient. Allowed examples: pwd, ls, cat, cp, mv, mkdir, touch, head, tail, grep, sed, wc, sort, uniq, find, ps, date, sha256sum. No pipes, redirects, shell operators, absolute paths, .. traversal or access outside the workspace. For multi-step work call run_shell repeatedly, or write a file and inspect the result. Do not use this for network access; use download_file.',
+      'description':
+          'Run ONE allowlisted Android toybox command inside the private agent workspace. Use for local file inspection/processing when list_files/read_file/write_file are insufficient. Allowed examples: pwd, ls, cat, cp, mv, mkdir, touch, head, tail, grep, sed, wc, sort, uniq, find, ps, date, sha256sum. No pipes, redirects, shell operators, absolute paths, .. traversal or access outside the workspace. For multi-step work call run_shell repeatedly, or write a file and inspect the result. Do not use this for network access; use download_file.',
       'parameters': {
         'type': 'object',
         'properties': {
           'command': {'type': 'string'},
           'timeout_ms': {'type': 'integer'},
         },
-        'required': ['command']
-      }
+        'required': ['command'],
+      },
     },
     {
       'name': 'list_files',
@@ -334,6 +357,64 @@ Rules:
           'path': {'type': 'string'},
         },
         'required': ['url'],
+      },
+    },
+    {
+      'name': 'run_node',
+      'description':
+          'Run a pure-JavaScript (.js) file from the agent workspace using the bundled '
+          'Node.js 18.20.4 LTS runtime (JaneaSystems nodejs-mobile v18.20.4, arm64-v8a). '
+          'The script runs in a SEPARATE Android process (:node_runner) that is killed after the run — '
+          'V8 is never re-entered (disposable-process pattern). '
+          'stdout/stderr are captured (each capped at 64 KB). '
+          'Wall-clock timeout enforced (default 30 s, max 120 s). '
+          'Workspace disk quota must be <= 100 MB before the run. '
+          'Use for: JSON parsing/transformation, CSV processing, calculations, '
+          'text generation, data aggregation, reading/writing workspace files. '
+          'Workflow: write_file the script, then run_node it, stdout is returned directly. '
+          'npm/npx: set is_npm=true to inject --ignore-scripts (prevents lifecycle hooks). '
+          'npm JS must already be in the workspace; see docs/NODE_RUNTIME.md. '
+          'Node 18 LTS support extended to April 2025. Do not eval() untrusted remote data.',
+      'parameters': {
+        'type': 'object',
+        'properties': {
+          'script': {
+            'type': 'string',
+            'description':
+                'Path to the .js file RELATIVE to agent_workspace root. '
+                'Must already exist (use write_file first). '
+                'Example: "process.js", "scripts/convert.js".',
+          },
+          'args': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'description':
+                'Command-line arguments passed to the script as process.argv[2..]. '
+                'Example: ["input.json", "--format", "csv"].',
+          },
+          'node_flags': {
+            'type': 'array',
+            'items': {'type': 'string'},
+            'description':
+                'Extra Node.js VM flags inserted before the script path. '
+                'Example: ["--max-old-space-size=64"] to limit heap to 64 MB. '
+                'Rarely needed; omit for normal scripts.',
+          },
+          'timeout_ms': {
+            'type': 'integer',
+            'description':
+                'Wall-clock timeout in milliseconds (default 30000, max 120000). '
+                'The :node process is killed on timeout; partial stdout/stderr are returned.',
+          },
+          'is_npm': {
+            'type': 'boolean',
+            'description':
+                'Set true when the script IS an npm CLI entry point (e.g. workspace/node_modules/.bin/npm). '
+                'Automatically appends --ignore-scripts so lifecycle hooks never run. '
+                'Default false.',
+          },
+        },
+        'required': ['script'],
       },
     },
     {
@@ -475,13 +556,15 @@ Rules:
             return 'Cancelled';
           } else {
             // Multimodal tools record audio + call Gemini vision — allow longer.
+            // run_node can run for up to its configured timeout (up to 90s).
             final toolMs =
                 (name == 'watch_video' ||
                     name == 'watch_camera' ||
                     name == 'listen_audio' ||
                     name == 'download_file' ||
-                    name == 'read_file')
-                ? 90000
+                    name == 'read_file' ||
+                    name == 'run_node')
+                ? 120000
                 : ((name == 'see_page' || name == 'see_camera')
                       ? 40000
                       : _maxToolMs);

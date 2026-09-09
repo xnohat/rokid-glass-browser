@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -69,6 +70,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   late final AgentFiles _files = AgentFiles(
     _vision,
     () => _methodChannel.invokeMethod<String>('filesDir'),
+    _methodChannel,
   );
   late final BrowserAgent _agent = BrowserAgent(
     runTool: _runAgentTool,
@@ -88,6 +90,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   int _agentEpoch = 0;
   double _dim = 0.0;
   final ScrollController _agentScroll = ScrollController();
+  // Console stays open until touchpad double-tap.
   Timer? _agentHideTimer;
   bool _micActive = false;
   String? _micStatus;
@@ -1709,18 +1712,25 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
     // When the agent console is visible, touchpad swipes review its history.
     // New lines still auto-scroll to bottom; a manual swipe can go up/down.
-    if (_agentPanelOpen && _agentScroll.hasClients &&
+    if (_agentPanelOpen &&
+        _agentScroll.hasClients &&
         (k == LogicalKeyboardKey.arrowRight ||
             k == LogicalKeyboardKey.arrowDown ||
             k == LogicalKeyboardKey.arrowLeft ||
             k == LogicalKeyboardKey.arrowUp)) {
-      final forward = k == LogicalKeyboardKey.arrowRight ||
+      final forward =
+          k == LogicalKeyboardKey.arrowRight ||
           k == LogicalKeyboardKey.arrowDown;
       final pos = _agentScroll.position;
-      final target = (pos.pixels + (forward ? 60 : -60))
-          .clamp(pos.minScrollExtent, pos.maxScrollExtent);
-      _agentScroll.animateTo(target,
-          duration: const Duration(milliseconds: 160), curve: Curves.easeOut);
+      final target = (pos.pixels + (forward ? 60 : -60)).clamp(
+        pos.minScrollExtent,
+        pos.maxScrollExtent,
+      );
+      _agentScroll.animateTo(
+        target,
+        duration: const Duration(milliseconds: 160),
+        curve: Curves.easeOut,
+      );
       return true;
     }
     if (_showWebRemotePanel && _swipeScrollsPage) {
@@ -2427,6 +2437,22 @@ class _BrowserScreenState extends State<BrowserScreen>
               ? args['timeoutMs'] as int
               : 10000,
         );
+      case 'run_node':
+        return await _files.runNode(
+          (args['script'] ?? '').toString(),
+          scriptArgs:
+              (args['args'] as List?)?.map((a) => a.toString()).toList() ??
+              const [],
+          nodeFlags:
+              (args['node_flags'] as List?)
+                  ?.map((a) => a.toString())
+                  .toList() ??
+              const [],
+          timeoutMs: args['timeout_ms'] is int
+              ? args['timeout_ms'] as int
+              : 30000,
+          isNpm: (args['is_npm'] as bool?) ?? false,
+        );
       case 'download_file':
         return await _files.download(
           (args['url'] ?? '').toString(),
@@ -2553,14 +2579,14 @@ class _BrowserScreenState extends State<BrowserScreen>
       _agentLog.add('🗣 $command');
     });
     _scrollAgentToBottom();
-    var spokenMs = 0;
+
     try {
       final msg = await _agent.run(command);
       _agentConsole('✓ $msg');
       _webRemote.publishAgent(msg);
       // Speak only the final answer (never tool/intermediate lines).
       if (msg != 'Cancelled' && !msg.startsWith('Stopped after')) {
-        spokenMs = await _speaker.speak(msg);
+        await _speaker.speak(msg);
       }
     } catch (e) {
       final m = e is StateError ? e.message : e.toString();
@@ -2569,12 +2595,6 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
     // A newer run/cancel superseded us — don't touch the console or its timer.
     if (epoch != _agentEpoch) return;
-    // Keep the window up while it is still speaking, then linger 10s more.
-    _agentHideTimer?.cancel();
-    _agentHideTimer = Timer(Duration(milliseconds: spokenMs + 10000), () {
-      if (mounted && epoch == _agentEpoch)
-        setState(() => _agentPanelOpen = false);
-    });
   }
 
   void _setMicStatus(String? t, {int clearAfterMs = 0}) {

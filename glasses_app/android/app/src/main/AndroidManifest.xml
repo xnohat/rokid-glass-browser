@@ -43,6 +43,22 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!--
+             NodeService: runs Node.js 12.19 (libnode.so) in a separate ":node"
+             Android process.  The process calls node::Start() exactly once then
+             System.exit(0) — V8 is never re-entered.  The next run_node call
+             gets a fresh process from Android (disposable-process pattern).
+
+             Same-UID note: this process shares the app UID (same APK / signing
+             key).  It can read/write the app's private files.  The Dart agent
+             layer enforces workspace sandbox, timeout, and output limits before
+             starting this service.  See docs/NODE_RUNTIME.md.
+        -->
+        <service
+            android:name="com.rokid.rokid_browser_glasses.NodeService"
+            android:process=":node"
+            android:enabled="true"
+            android:exported="false" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
